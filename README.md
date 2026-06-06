@@ -66,6 +66,8 @@ REMOTE_RSYNC_SSH_OPTS="-p 2222"
 
 `runtime:"mounted-fs"` is the pre-Firecracker integration harness. Session start happens on the selected node, registers a session-local NBD export, attaches it to a free `/dev/nbdX` inside that node container, optionally formats it, and mounts it under `/mnt/orca-sessions/{session_id}`. The response includes `mount_path` and `nbd_device`. `POST /sessions/{id}/commit` unmounts, disconnects the NBD device, commits dirty chunks to a new snapshot, and releases the device. `POST /sessions/{id}/stop` unmounts and disconnects without committing.
 
+NBD devices are host kernel devices, not image-local devices. `remote-setup` loads the host `nbd` module and configures `/dev/nbd0..15` on boot. The node containers run privileged so they can see those devices and perform test mounts. Compose gives each node a disjoint allocation range: node-1 uses `/dev/nbd0..7`, and node-2 uses `/dev/nbd8..15`. At startup, each node preflights `nbd-client`, `mkfs.ext4`, `mount`, `umount`, and visible NBD devices in its assigned range; if the host module or container device access is missing, the node fails with a direct setup error instead of a later opaque mount failure. Nodes also check `/dev/kvm` visibility and log a warning today; this becomes required when `runtime:"firecracker"` is added.
+
 `runtime:"nbd-export-test"` is a low-level protocol test harness. The node creates a session-local NBD export, but the caller attaches it. This preserves direct NBD coverage while keeping the future product path centered on node-owned device lifecycle.
 
 Example mounted filesystem session:

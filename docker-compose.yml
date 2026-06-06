@@ -107,9 +107,17 @@ services:
       NBD_ADDR: :10809
       NBD_PUBLIC_ADDR: localhost:11081
       NBD_COMMIT_BATCH_CHUNKS: "16"
+      NBD_DEVICE_PREFIX: /dev/nbd
+      NBD_DEVICE_START: "0"
+      NBD_DEVICE_COUNT: "8"
+      REQUIRE_NBD_DEVICES: "true"
+      KVM_DEVICE: /dev/kvm
+      REQUIRE_KVM: "false"
     ports:
       - "18081:8080"
       - "11081:10809"
+    # Required for host NBD block devices and mounting in the mounted-fs runtime.
+    # The node also checks /dev/kvm visibility for the future firecracker runtime.
     privileged: true
     volumes:
       - node-1-cache:/cache
@@ -147,9 +155,17 @@ services:
       NBD_ADDR: :10809
       NBD_PUBLIC_ADDR: localhost:11082
       NBD_COMMIT_BATCH_CHUNKS: "16"
+      NBD_DEVICE_PREFIX: /dev/nbd
+      NBD_DEVICE_START: "8"
+      NBD_DEVICE_COUNT: "8"
+      REQUIRE_NBD_DEVICES: "true"
+      KVM_DEVICE: /dev/kvm
+      REQUIRE_KVM: "false"
     ports:
       - "18082:8080"
       - "11082:10809"
+    # Required for host NBD block devices and mounting in the mounted-fs runtime.
+    # The node also checks /dev/kvm visibility for the future firecracker runtime.
     privileged: true
     volumes:
       - node-2-cache:/cache

@@ -29,6 +29,11 @@ type app struct {
 	nbdPublicAddr    string
 	nbdCommitBatch   int
 	nbdDefaultCommit bool
+	nbdDeviceStart   int
+	nbdDeviceCount   int
+	requireNBD       bool
+	kvmDevice        string
+	requireKVM       bool
 	mountRoot        string
 	nbdDevicePrefix  string
 	mountMu          sync.Mutex
@@ -72,13 +77,32 @@ func main() {
 		nbdPublicAddr:    getenv("NBD_PUBLIC_ADDR", ""),
 		nbdCommitBatch:   int(mustInt64(getenv("NBD_COMMIT_BATCH_CHUNKS", "16"))),
 		nbdDefaultCommit: getenv("NBD_COMMIT_ON_DISCONNECT", "false") == "true",
+		nbdDeviceStart:   int(mustInt64(getenv("NBD_DEVICE_START", "0"))),
+		nbdDeviceCount:   int(mustInt64(getenv("NBD_DEVICE_COUNT", "16"))),
+		requireNBD:       getenv("REQUIRE_NBD_DEVICES", "false") == "true",
+		kvmDevice:        getenv("KVM_DEVICE", "/dev/kvm"),
+		requireKVM:       getenv("REQUIRE_KVM", "false") == "true",
 		mountRoot:        getenv("MOUNT_ROOT", "/mnt/orca-sessions"),
 		nbdDevicePrefix:  getenv("NBD_DEVICE_PREFIX", "/dev/nbd"),
 		mounts:           map[string]*mountedSession{},
 		usedNBDDevices:   map[string]struct{}{},
 	}
+	if err := a.preflightKVM(); err != nil {
+		if a.requireKVM {
+			log.Fatal(err)
+		}
+		log.Printf("KVM preflight warning: %v", err)
+	}
 	if nbdAddr := a.nbdAddr; nbdAddr != "" {
-		_ = runCommand("modprobe", "nbd", "max_part=8")
+		if err := runCommand("modprobe", "nbd", "max_part=8"); err != nil {
+			log.Printf("NBD module load warning: %v", err)
+		}
+		if err := a.preflightNBDDevices(); err != nil {
+			if a.requireNBD {
+				log.Fatal(err)
+			}
+			log.Printf("NBD device preflight warning: %v", err)
+		}
 		ln, err := net.Listen("tcp", nbdAddr)
 		must(err)
 		log.Printf("%s NBD listener on %s", nodeID, nbdAddr)
@@ -298,6 +322,9 @@ func (a *app) startMountedSession(session *storage.Session, format bool, fsType 
 	if a.nbdAddr == "" {
 		return fmt.Errorf("mounted-fs runtime is not enabled on this node")
 	}
+	if err := a.preflightNBDDevices(); err != nil {
+		return err
+	}
 	if fsType == "" {
 		fsType = "ext4"
 	}
@@ -388,18 +415,23 @@ func (a *app) detachMountedSession(sessionID string) error {
 func (a *app) allocateNBDDevice() (string, error) {
 	a.mountMu.Lock()
 	defer a.mountMu.Unlock()
-	for i := 0; i < 16; i++ {
+	visible := 0
+	for i := a.nbdDeviceStart; i < a.nbdDeviceStart+a.nbdDeviceCount; i++ {
 		device := fmt.Sprintf("%s%d", a.nbdDevicePrefix, i)
-		if _, used := a.usedNBDDevices[device]; used {
+		if _, err := os.Stat(device); err != nil {
 			continue
 		}
-		if _, err := os.Stat(device); err != nil {
+		visible++
+		if _, used := a.usedNBDDevices[device]; used {
 			continue
 		}
 		a.usedNBDDevices[device] = struct{}{}
 		return device, nil
 	}
-	return "", fmt.Errorf("no free NBD device found")
+	if visible == 0 {
+		return "", fmt.Errorf("no NBD devices visible at %s[%d..%d); load the host nbd module with remote-setup and run the node with privileged/device access", a.nbdDevicePrefix, a.nbdDeviceStart, a.nbdDeviceStart+a.nbdDeviceCount)
+	}
+	return "", fmt.Errorf("all %d visible NBD devices are already allocated on this node", visible)
 }
 
 func (a *app) releaseNBDDevice(device string) {
@@ -418,6 +450,48 @@ func runCommand(name string, args ...string) error {
 		log.Printf("%s output: %s", name, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func (a *app) preflightKVM() error {
+	if a.kvmDevice == "" {
+		return nil
+	}
+	info, err := os.Stat(a.kvmDevice)
+	if err != nil {
+		return fmt.Errorf("KVM device %s is not visible in the node container; enable host KVM and pass /dev/kvm before using firecracker runtime: %w", a.kvmDevice, err)
+	}
+	if info.Mode()&os.ModeDevice == 0 {
+		return fmt.Errorf("KVM path %s exists but is not a device", a.kvmDevice)
+	}
+	log.Printf("KVM device visible: %s", a.kvmDevice)
+	return nil
+}
+
+func (a *app) preflightNBDDevices() error {
+	for _, command := range []string{"nbd-client", "mkfs.ext4", "mount", "umount"} {
+		if _, err := exec.LookPath(command); err != nil {
+			return fmt.Errorf("mounted-fs runtime requires %q in the node image: %w", command, err)
+		}
+	}
+	devices := a.visibleNBDDevices()
+	if len(devices) == 0 {
+		return fmt.Errorf("mounted-fs runtime requires host NBD block devices, but none are visible at %s[%d..%d); run remote-setup to load nbd and ensure the node container has privileged/device access", a.nbdDevicePrefix, a.nbdDeviceStart, a.nbdDeviceStart+a.nbdDeviceCount)
+	}
+	log.Printf("NBD devices visible: %s", strings.Join(devices, ", "))
+	return nil
+}
+
+func (a *app) visibleNBDDevices() []string {
+	var devices []string
+	for i := a.nbdDeviceStart; i < a.nbdDeviceStart+a.nbdDeviceCount; i++ {
+		device := fmt.Sprintf("%s%d", a.nbdDevicePrefix, i)
+		info, err := os.Stat(device)
+		if err != nil || info.Mode()&os.ModeDevice == 0 {
+			continue
+		}
+		devices = append(devices, device)
+	}
+	return devices
 }
 
 func localNBDClientTarget(listenAddr string) (string, string) {
