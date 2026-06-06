@@ -56,7 +56,13 @@ log "configuring NBD devices"
 printf 'nbd\n' | sudo tee /etc/modules-load.d/orca-nbd.conf >/dev/null
 printf 'options nbd nbds_max=16 max_part=8\n' | sudo tee /etc/modprobe.d/orca-nbd.conf >/dev/null
 sudo modprobe nbd nbds_max=16 max_part=8 || sudo modprobe nbd max_part=8
-ls -l /dev/nbd* | head
+nbd_count=$(find /dev -maxdepth 1 -name 'nbd[0-9]*' | wc -l)
+echo "NBD devices: $nbd_count"
+if [[ "$nbd_count" -lt 1 ]]; then
+  echo "No /dev/nbd* devices found after loading the nbd module." >&2
+  exit 1
+fi
+find /dev -maxdepth 1 -name 'nbd[0-9]*' | sort -V | head | xargs -r ls -l
 
 log "checking docker"
 if docker version >/dev/null 2>&1; then
@@ -74,6 +80,15 @@ else
   sudo docker run --rm --device /dev/kvm ubuntu:24.04 sh -lc 'ls -l /dev/kvm'
   echo
   echo "Container KVM access works via sudo. Re-login/newgrp docker for non-sudo Docker."
+fi
+
+log "checking privileged container access to NBD devices"
+if docker run --rm --privileged ubuntu:24.04 sh -lc 'test -b /dev/nbd0 && ls -l /dev/nbd0' >/dev/null 2>&1; then
+  docker run --rm --privileged ubuntu:24.04 sh -lc 'ls -l /dev/nbd0'
+else
+  sudo docker run --rm --privileged ubuntu:24.04 sh -lc 'test -b /dev/nbd0 && ls -l /dev/nbd0'
+  echo
+  echo "Privileged container NBD access works via sudo. Re-login/newgrp docker for non-sudo Docker."
 fi
 
 log "remote host is ready"

@@ -1,4 +1,4 @@
-.PHONY: up down test unit integration demo logs clean remote-check remote-authorize-key remote-setup remote-sync remote-shell remote-test remote-demo remote-logs remote-down remote-clean
+.PHONY: up down test unit integration demo logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-logs remote-down remote-clean
 
 GO_CACHE_DIR ?= $(CURDIR)/.gocache
 REMOTE_HOST ?=
@@ -7,8 +7,11 @@ LOCAL_PUBLIC_KEY ?= $(HOME)/.ssh/id_ed25519.pub
 REMOTE_SSH ?= ssh
 REMOTE_SCP ?= scp
 REMOTE_RSYNC ?= rsync
-REMOTE_SSH_OPTS ?=
-REMOTE_SCP_OPTS ?=
+REMOTE_PORT ?=
+REMOTE_SSH_PORT_OPT = $(if $(REMOTE_PORT),-p $(REMOTE_PORT),)
+REMOTE_SCP_PORT_OPT = $(if $(REMOTE_PORT),-P $(REMOTE_PORT),)
+REMOTE_SSH_OPTS ?= $(REMOTE_SSH_PORT_OPT)
+REMOTE_SCP_OPTS ?= $(REMOTE_SCP_PORT_OPT)
 REMOTE_TTY_SSH_OPTS ?= -tt
 REMOTE_RSYNC_SSH_OPTS ?= $(REMOTE_SSH_OPTS)
 REMOTE_RSYNC_OPTS ?= -az --delete \
@@ -44,14 +47,18 @@ clean:
 
 remote-check:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-check REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)
-	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'set -eu; hostname; uname -a; echo "kvm device:"; ls -l /dev/kvm; echo "virt flags:"; grep -Ewc "vmx|svm" /proc/cpuinfo; command -v docker >/dev/null && docker version --format "{{.Server.Version}}" || true; docker compose version || true'
+	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'set -eu; hostname; uname -a; echo "kvm device:"; ls -l /dev/kvm; echo "virt flags:"; grep -Ewc "vmx|svm" /proc/cpuinfo; echo "nbd devices:"; find /dev -maxdepth 1 -name "nbd[0-9]*" | sort -V | head | xargs -r ls -l; command -v docker >/dev/null && docker version --format "{{.Server.Version}}" || true; docker compose version || true'
 
 remote-authorize-key:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-authorize-key REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)
 	@test -f "$(LOCAL_PUBLIC_KEY)" || (echo "LOCAL_PUBLIC_KEY not found: $(LOCAL_PUBLIC_KEY)" >&2; exit 2)
 	cat "$(LOCAL_PUBLIC_KEY)" | $(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'set -eu; pub=$$(cat); mkdir -p ~/.ssh; chmod 700 ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; grep -qxF "$$pub" ~/.ssh/authorized_keys || printf "%s\n" "$$pub" >> ~/.ssh/authorized_keys'
 
-remote-setup:
+remote-enable-passwordless-sudo:
+	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-enable-passwordless-sudo REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)
+	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'set -eu; user=$$(id -un); rule="$$user ALL=(ALL) NOPASSWD:ALL"; tmp=$$(mktemp); printf "%s\n" "$$rule" > "$$tmp"; echo "installing passwordless sudo rule for $$user"; sudo install -m 0440 "$$tmp" /etc/sudoers.d/orca-remote-dev; rm -f "$$tmp"; sudo visudo -cf /etc/sudoers.d/orca-remote-dev; sudo -n true; echo "passwordless sudo enabled for $$user"'
+
+remote-setup: remote-enable-passwordless-sudo
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-setup REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)
 	$(REMOTE_SCP) $(REMOTE_SCP_OPTS) scripts/remote-setup.sh $(REMOTE_HOST):/tmp/orca-remote-setup.sh
 	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'chmod +x /tmp/orca-remote-setup.sh && /tmp/orca-remote-setup.sh'

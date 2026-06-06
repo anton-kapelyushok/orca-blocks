@@ -36,16 +36,25 @@ make remote-test REMOTE_HOST=vboxuser@192.168.178.201
 make remote-demo REMOTE_HOST=vboxuser@192.168.178.201
 ```
 
-`remote-authorize-key` installs your local SSH public key, defaulting to `~/.ssh/id_ed25519.pub`, into the remote user's `authorized_keys`. The remote setup script verifies `/dev/kvm`, installs Docker Compose and development packages, enables Docker, and checks that a container can see `/dev/kvm`. If Docker only works through `sudo` immediately after setup, log out and back in or run `newgrp docker`.
+For a forwarded SSH port, prefer the single `REMOTE_PORT` knob:
+
+```sh
+make remote-check REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-setup REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-test REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+```
+
+`remote-authorize-key` installs your local SSH public key, defaulting to `~/.ssh/id_ed25519.pub`, into the remote user's `authorized_keys`. `remote-setup` first installs a dev-VM sudoers rule for the remote user so repeated setup runs do not prompt for a password, then verifies `/dev/kvm`, installs Docker Compose and development packages, enables Docker, configures the host to load the `nbd` module on boot, and checks that containers can see `/dev/kvm` and `/dev/nbd0`. If Docker only works through `sudo` immediately after setup, log out and back in or run `newgrp docker`.
 
 Useful knobs:
 
 ```sh
 REMOTE_HOST=vboxuser@192.168.178.201
+REMOTE_PORT=2222
 REMOTE_DIR=~/orca-blocks
 LOCAL_PUBLIC_KEY=~/.ssh/id_ed25519.pub
 REMOTE_SSH_OPTS="-p 2222"
-REMOTE_TTY_SSH_OPTS="-tt -p 2222"
+REMOTE_TTY_SSH_OPTS="-tt"
 REMOTE_SCP_OPTS="-P 2222"
 REMOTE_RSYNC_SSH_OPTS="-p 2222"
 ```
