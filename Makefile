@@ -1,4 +1,4 @@
-.PHONY: up down test unit integration demo logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-logs remote-down remote-clean
+.PHONY: up down test unit integration demo firecracker-assets firecracker-rootfs firecracker-boot-check logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-firecracker-assets remote-firecracker-rootfs remote-firecracker-boot-check remote-logs remote-down remote-clean
 
 GO_CACHE_DIR ?= $(CURDIR)/.gocache
 REMOTE_HOST ?=
@@ -17,6 +17,7 @@ REMOTE_RSYNC_SSH_OPTS ?= $(REMOTE_SSH_OPTS)
 REMOTE_RSYNC_OPTS ?= -az --delete \
 	--exclude .git \
 	--exclude .gocache \
+	--exclude firecracker-assets \
 	--exclude node_modules \
 	--exclude vendor
 
@@ -38,6 +39,15 @@ test: unit integration
 demo:
 	docker compose up --build -d
 	./scripts/demo.sh
+
+firecracker-rootfs:
+	./scripts/build-alpine-rootfs.sh
+
+firecracker-assets:
+	./scripts/download-firecracker-assets.sh
+
+firecracker-boot-check:
+	./scripts/check-firecracker-boot.sh
 
 logs:
 	docker compose logs -f --tail=200
@@ -77,6 +87,15 @@ remote-test: remote-sync
 
 remote-demo: remote-sync
 	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make demo'
+
+remote-firecracker-rootfs: remote-sync
+	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-rootfs'
+
+remote-firecracker-assets: remote-sync
+	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-assets'
+
+remote-firecracker-boot-check: remote-sync
+	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-boot-check'
 
 remote-logs:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-logs REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)

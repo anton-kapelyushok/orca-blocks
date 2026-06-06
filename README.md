@@ -70,6 +70,26 @@ NBD devices are host kernel devices, not image-local devices. `remote-setup` loa
 
 `runtime:"nbd-export-test"` is a low-level protocol test harness. The node creates a session-local NBD export, but the caller attaches it. This preserves direct NBD coverage while keeping the future product path centered on node-owned device lifecycle.
 
+## Firecracker Assets
+
+The first Firecracker runtime will boot from a static root filesystem and attach the Orca lazy block volume as a second disk. Build the Alpine-based rootfs on a Linux host with loop-mount support:
+
+```sh
+make remote-firecracker-assets REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-firecracker-rootfs REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-firecracker-boot-check REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+```
+
+`remote-firecracker-assets` downloads the Firecracker binary and a matching CI kernel into `firecracker-assets/`. The rootfs builder writes `firecracker-assets/rootfs.ext4` by default. It downloads Alpine minirootfs, creates an ext4 image, extracts Alpine, and installs an `/init` script that understands these kernel args:
+
+```text
+orca.mode=smoke
+orca.mode=write orca.payload=hello orca.data_dev=/dev/vdb
+orca.mode=read orca.data_dev=/dev/vdb
+```
+
+The rootfs is only the boot environment. The Orca volume should be attached separately as `/dev/vdb`.
+
 Example mounted filesystem session:
 
 ```json
