@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 )
 
@@ -133,6 +134,66 @@ func TestMissingChunksReadAsZeroes(t *testing.T) {
 	t.Logf("got zero_fills=%d hits=%d misses=%d remote_fetches=%d", stats.ZeroFills, stats.CacheHits, stats.CacheMisses, stats.RemoteFetches)
 	if stats.ZeroFills != 2 {
 		t.Fatalf("zero fills = %d, want 2", stats.ZeroFills)
+	}
+}
+
+func TestWritePersistsDirtyChunksToDiskUntilCommit(t *testing.T) {
+	ctx := context.Background()
+	t.Log("creating storage for disk-backed dirty overlay test")
+	repo := NewMemRepo()
+	store := NewMemObjectStore("test")
+	cache, err := NewLocalCache(t.TempDir(), 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := NewBackend("node-1", repo, store, cache)
+	t.Log("creating volume with 8-byte chunks")
+	if _, err := backend.CreateVolume(ctx, "vol-dirty-disk", 128, 8); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("creating session with a dedicated dirty overlay directory")
+	session, err := backend.StartSession(ctx, "vol-dirty-disk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("writing 3 bytes at offset 2; dirty chunk should be materialized on disk at %s", session.dirtyPath(0))
+	if err := backend.Write(ctx, session.ID, 2, []byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := backend.Stats(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("got dirty_chunks=%d before commit", stats.DirtyChunks)
+	if stats.DirtyChunks != 1 {
+		t.Fatalf("dirty chunks = %d, want 1", stats.DirtyChunks)
+	}
+
+	dirtyChunk, err := os.ReadFile(session.dirtyPath(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDirtyChunk := []byte{0, 0, 'a', 'b', 'c', 0, 0, 0}
+	if !bytes.Equal(dirtyChunk, wantDirtyChunk) {
+		t.Fatalf("dirty chunk on disk = %v, want %v", dirtyChunk, wantDirtyChunk)
+	}
+	t.Logf("dirty chunk exists on disk with %d bytes", len(dirtyChunk))
+
+	t.Log("committing session; dirty overlay files should be cleared after snapshot commit")
+	if _, err := backend.Commit(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(session.dirtyPath(0)); !os.IsNotExist(err) {
+		t.Fatalf("expected dirty chunk file to be removed after commit, stat err=%v", err)
+	}
+	stats, err = backend.Stats(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("got dirty_chunks=%d after commit", stats.DirtyChunks)
+	if stats.DirtyChunks != 0 {
+		t.Fatalf("dirty chunks after commit = %d, want 0", stats.DirtyChunks)
 	}
 }
 

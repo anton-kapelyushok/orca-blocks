@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
@@ -26,7 +29,8 @@ type Session struct {
 	Volume         Volume
 	BaseSnapshotID string
 	BaseManifest   Manifest
-	Dirty          map[int64][]byte
+	Dirty          map[int64]struct{}
+	DirtyDir       string
 	Stats          SessionStats
 }
 
@@ -76,17 +80,28 @@ func (b *Backend) StartSession(ctx context.Context, volumeID string) (*Session, 
 		}
 	}
 
+	sessionID := uuid.NewString()
+	dirtyDir := filepath.Join(b.Cache.dir, "dirty-sessions", sessionID)
+	if err := os.MkdirAll(dirtyDir, 0o755); err != nil {
+		return nil, err
+	}
+
 	session := &Session{
-		ID:             uuid.NewString(),
+		ID:             sessionID,
 		Volume:         volume,
 		BaseSnapshotID: volume.LatestSnapshotID,
 		BaseManifest:   manifest,
-		Dirty:          map[int64][]byte{},
+		Dirty:          map[int64]struct{}{},
+		DirtyDir:       dirtyDir,
 	}
 	b.mu.Lock()
 	b.sessions[session.ID] = session
 	b.mu.Unlock()
 	if err := b.Repo.UpdateLastNode(ctx, volumeID, b.NodeID); err != nil {
+		b.mu.Lock()
+		delete(b.sessions, session.ID)
+		b.mu.Unlock()
+		_ = os.RemoveAll(dirtyDir)
 		return nil, err
 	}
 	return session, nil
@@ -130,8 +145,13 @@ func (b *Backend) Write(ctx context.Context, sessionID string, offset int64, dat
 	}
 	var dataPos int64
 	for _, r := range ranges {
-		chunk, ok := session.Dirty[r.Index]
-		if !ok {
+		var chunk []byte
+		if _, ok := session.Dirty[r.Index]; ok {
+			chunk, err = session.readDirtyChunk(r.Index, session.Volume.ChunkSize)
+			if err != nil {
+				return err
+			}
+		} else {
 			chunk, err = b.resolveChunk(ctx, session, r.Index)
 			if err != nil {
 				return err
@@ -140,7 +160,10 @@ func (b *Backend) Write(ctx context.Context, sessionID string, offset int64, dat
 		}
 		partLen := r.ReqEnd - r.ReqStart
 		copy(chunk[r.ChunkStart:r.ChunkStart+int(partLen)], data[dataPos:dataPos+partLen])
-		session.Dirty[r.Index] = chunk
+		if err := session.writeDirtyChunk(r.Index, chunk); err != nil {
+			return err
+		}
+		session.Dirty[r.Index] = struct{}{}
 		dataPos += partLen
 	}
 	return nil
@@ -158,7 +181,10 @@ func (b *Backend) Commit(ctx context.Context, sessionID string) (Snapshot, error
 	}
 	sort.Slice(dirtyIndexes, func(i, j int) bool { return dirtyIndexes[i] < dirtyIndexes[j] })
 	for _, idx := range dirtyIndexes {
-		chunk := session.Dirty[idx]
+		chunk, err := session.readDirtyChunk(idx, session.Volume.ChunkSize)
+		if err != nil {
+			return Snapshot{}, err
+		}
 		chunkID := HashChunk(chunk)
 		key := chunkKey(chunkID)
 		exists, err := b.Store.Exists(ctx, key)
@@ -190,18 +216,21 @@ func (b *Backend) Commit(ctx context.Context, sessionID string) (Snapshot, error
 	}
 	session.BaseSnapshotID = snapshotID
 	session.BaseManifest = manifest
-	session.Dirty = map[int64][]byte{}
+	if err := session.clearDirtyOverlay(); err != nil {
+		return Snapshot{}, err
+	}
 	return snapshot, nil
 }
 
 func (b *Backend) Stop(sessionID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, ok := b.sessions[sessionID]; !ok {
+	session, ok := b.sessions[sessionID]
+	if !ok {
 		return ErrNotFound
 	}
 	delete(b.sessions, sessionID)
-	return nil
+	return os.RemoveAll(session.DirtyDir)
 }
 
 func (b *Backend) Stats(sessionID string) (SessionStats, error) {
@@ -225,8 +254,8 @@ func (b *Backend) session(sessionID string) (*Session, error) {
 }
 
 func (b *Backend) resolveChunk(ctx context.Context, session *Session, index int64) ([]byte, error) {
-	if dirty, ok := session.Dirty[index]; ok {
-		return dirty, nil
+	if _, ok := session.Dirty[index]; ok {
+		return session.readDirtyChunk(index, session.Volume.ChunkSize)
 	}
 	chunkID, ok := session.BaseManifest[index]
 	if !ok {
@@ -298,4 +327,31 @@ func chunkKey(chunkID string) string {
 
 func manifestKey(snapshotID string) string {
 	return "manifests/" + snapshotID + ".json"
+}
+
+func (s *Session) dirtyPath(index int64) string {
+	return filepath.Join(s.DirtyDir, strconv.FormatInt(index, 10))
+}
+
+func (s *Session) readDirtyChunk(index, chunkSize int64) ([]byte, error) {
+	chunk, err := os.ReadFile(s.dirtyPath(index))
+	if err != nil {
+		return nil, err
+	}
+	return normalizeChunk(chunk, chunkSize)
+}
+
+func (s *Session) writeDirtyChunk(index int64, chunk []byte) error {
+	return os.WriteFile(s.dirtyPath(index), chunk, 0o644)
+}
+
+func (s *Session) clearDirtyOverlay() error {
+	if err := os.RemoveAll(s.DirtyDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.DirtyDir, 0o755); err != nil {
+		return err
+	}
+	s.Dirty = map[int64]struct{}{}
+	return nil
 }

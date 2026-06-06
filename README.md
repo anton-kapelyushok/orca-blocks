@@ -65,3 +65,5 @@ GET  /nodes
 A virtual volume has a `volume_id`, `size_bytes` defaulting to 10 GiB, `chunk_size` defaulting to 4 MiB, and a latest snapshot pointer. A snapshot manifest maps `chunk_index` to `chunk_id`, where `chunk_id` is the SHA-256 digest of the immutable chunk bytes. Missing manifest entries read as zero-filled chunks.
 
 Reads check the dirty session overlay first, then local node cache, then MinIO, then zero-fill. Writes materialize the base chunk on first write, patch bytes into it, and mark it dirty. Commit hashes dirty chunks, uploads missing immutable chunks to MinIO, writes a new manifest, updates the latest snapshot pointer, keeps committed chunks in the local cache, and clears dirty state.
+
+The dirty session overlay is disk-backed under each node's local cache volume at `dirty-sessions/{session_id}/{chunk_index}`. The node still tracks dirty chunk indexes in memory while the session is active, but the patched chunk bytes are written to disk until commit or stop. Commit reads those dirty chunk files, writes immutable chunks/manifests, then clears the overlay directory.
