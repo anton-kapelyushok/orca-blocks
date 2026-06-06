@@ -64,7 +64,7 @@ func startMountedSession(t *testing.T, control, volumeID, node string, format bo
 	postJSON(t, control+"/sessions/start", map[string]any{
 		"volume_id":  volumeID,
 		"force_node": node,
-		"frontend":   "mount",
+		"runtime":    "mounted-fs",
 		"format":     format,
 		"fs_type":    "ext4",
 	}, &start)

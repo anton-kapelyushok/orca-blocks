@@ -67,7 +67,11 @@ func TestCrossNodeResumeThroughCompose(t *testing.T) {
 func startSession(t *testing.T, control, volumeID, node string) map[string]string {
 	t.Helper()
 	var out map[string]string
-	postJSON(t, control+"/sessions/start", map[string]string{"volume_id": volumeID, "force_node": node}, &out)
+	postJSON(t, control+"/sessions/start", map[string]string{
+		"volume_id":  volumeID,
+		"force_node": node,
+		"runtime":    "http-block",
+	}, &out)
 	return out
 }
 

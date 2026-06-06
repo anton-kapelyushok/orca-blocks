@@ -112,6 +112,7 @@ func (a *app) getVolume(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Runtime            string `json:"runtime"`
 		VolumeID           string `json:"volume_id"`
 		ForceNode          string `json:"force_node"`
 		Frontend           string `json:"frontend"`
@@ -134,6 +135,9 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	startReq := map[string]any{"volume_id": req.VolumeID}
+	if req.Runtime != "" {
+		startReq["runtime"] = req.Runtime
+	}
 	if req.Frontend != "" {
 		startReq["frontend"] = req.Frontend
 	}

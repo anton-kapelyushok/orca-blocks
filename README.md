@@ -2,12 +2,12 @@
 
 This repository contains a local Docker Compose prototype for the hard storage path of a remote-execution block backend. It emulates two execution nodes with independent persistent local caches, MinIO as durable S3-compatible chunk storage, and Postgres metadata for volumes, snapshots, and scheduling hints.
 
-Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The HTTP node API, raw NBD frontend, and node-managed mounted-session frontend are thin frontends over the storage package.
+Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The current runtimes are thin test/debug surfaces over the storage package. NBD is an internal device implementation for the mounted filesystem runtime and a low-level protocol test path.
 
 ## Architecture
 
 - `control-service`: creates volumes and schedules sessions. It tracks `last_node` in Postgres and prefers that node when it is healthy.
-- `node-1` and `node-2`: expose the block backend HTTP API and run a local NBD listener. Each node has its own Docker volume mounted as `/cache`.
+- `node-1` and `node-2`: expose the block backend HTTP API and run a local NBD listener used by node-owned block devices. Each node has its own Docker volume mounted as `/cache`.
 - `minio`: stores immutable chunks under `chunks/{sha256}` and snapshot manifests under `manifests/{snapshot_id}.json`.
 - `postgres`: stores volume metadata, latest snapshot pointers, snapshot records, and last-node hints.
 - `pkg/storage`: reusable storage engine for chunk math, manifests, lazy reads, dirty overlays, commits, local cache lookup/fill, and LRU eviction.
@@ -24,23 +24,27 @@ make clean
 
 The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), and `19000`/`19001` (MinIO API/console).
 
-Each node also exposes a session-local NBD listener: `11081` for node-1 and `11082` for node-2. NBD exports are created by starting a session with `{"frontend":"nbd"}`. The response includes `nbd_addr` and `nbd_export_name`; the export name is the session ID. NBD `READ` and `WRITE` call that session's storage backend directly. NBD `FLUSH` fsyncs the disk-backed dirty overlay but does not create a snapshot commit. Use `commit_on_disconnect:true` in the session-start request if you want the MVP export to commit when the NBD client disconnects.
+## Runtimes
 
-For the pre-Firecracker milestone, prefer the node-managed mounted frontend:
+`runtime:"http-block"` is the default. It does not use NBD or mount anything; the HTTP read/write endpoints call the storage backend directly. This is useful for storage tests, cache demos, and debugging.
+
+`runtime:"mounted-fs"` is the pre-Firecracker integration harness. Session start happens on the selected node, registers a session-local NBD export, attaches it to a free `/dev/nbdX` inside that node container, optionally formats it, and mounts it under `/mnt/orca-sessions/{session_id}`. The response includes `mount_path` and `nbd_device`. `POST /sessions/{id}/commit` unmounts, disconnects the NBD device, commits dirty chunks to a new snapshot, and releases the device. `POST /sessions/{id}/stop` unmounts and disconnects without committing.
+
+`runtime:"nbd-export-test"` is a low-level protocol test harness. The node creates a session-local NBD export, but the caller attaches it. This preserves direct NBD coverage while keeping the future product path centered on node-owned device lifecycle.
+
+Example mounted filesystem session:
 
 ```json
 {
   "volume_id": "mount-demo",
   "force_node": "node-1",
-  "frontend": "mount",
+  "runtime": "mounted-fs",
   "format": true,
   "fs_type": "ext4"
 }
 ```
 
-With `frontend:"mount"`, session start happens on the selected node, registers a session-local NBD export, attaches it to a free `/dev/nbdX` inside that node container, optionally formats it, and mounts it under `/mnt/orca-sessions/{session_id}`. The response includes `mount_path` and `nbd_device`. `POST /sessions/{id}/commit` unmounts, disconnects the NBD device, commits dirty chunks to a new snapshot, and releases the device. `POST /sessions/{id}/stop` unmounts and disconnects without committing.
-
-Example host-side attach flow on a Linux machine with NBD tools:
+Example low-level NBD protocol test flow on a Linux machine with NBD tools:
 
 ```sh
 sudo modprobe nbd
@@ -49,7 +53,7 @@ curl -sS -X POST localhost:18080/volumes/create \
   -d '{"volume_id":"nbd-demo","size_bytes":1073741824,"chunk_size":4194304}'
 SESSION_JSON=$(curl -sS -X POST localhost:18080/sessions/start \
   -H 'content-type: application/json' \
-  -d '{"volume_id":"nbd-demo","force_node":"node-1","frontend":"nbd","commit_on_disconnect":true}')
+  -d '{"volume_id":"nbd-demo","force_node":"node-1","runtime":"nbd-export-test","commit_on_disconnect":true}')
 EXPORT_NAME=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["nbd_export_name"])' <<< "$SESSION_JSON")
 sudo nbd-client localhost 11081 /dev/nbd0 -N "$EXPORT_NAME"
 sudo mkfs.ext4 /dev/nbd0
@@ -97,7 +101,7 @@ POST /scheduler/force
 GET  /nodes
 ```
 
-`POST /sessions/start` accepts `{"volume_id":"...", "force_node":"node-1"}` for deterministic tests. Without `force_node`, the scheduler prefers the volume's healthy `last_node`, then falls back to another healthy node.
+`POST /sessions/start` accepts `{"volume_id":"...", "force_node":"node-1", "runtime":"http-block"}` for deterministic tests. Without `runtime`, sessions default to `http-block`. Without `force_node`, the scheduler prefers the volume's healthy `last_node`, then falls back to another healthy node.
 
 ## Storage Semantics
 

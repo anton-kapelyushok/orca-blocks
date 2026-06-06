@@ -128,6 +128,7 @@ func (a *app) createVolume(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Runtime            string `json:"runtime"`
 		VolumeID           string `json:"volume_id"`
 		Frontend           string `json:"frontend"`
 		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
@@ -148,11 +149,14 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		"node_id":          a.backend.NodeID,
 		"base_snapshot_id": session.BaseSnapshotID,
 	}
-	switch req.Frontend {
-	case "nbd":
+	runtime := normalizeRuntime(req.Runtime, req.Frontend)
+	resp["runtime"] = runtime
+	switch runtime {
+	case "http-block":
+	case "nbd-export-test":
 		if a.nbdPublicAddr == "" {
 			_ = a.backend.Stop(session.ID)
-			writeError(w, fmt.Errorf("NBD frontend is not enabled on this node"))
+			writeError(w, fmt.Errorf("NBD test export is not enabled on this node"))
 			return
 		}
 		commitOnDisconnect := a.nbdDefaultCommit
@@ -174,7 +178,7 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		resp["nbd_addr"] = a.nbdPublicAddr
 		resp["nbd_export_name"] = session.ID
 		resp["nbd_commit_on_disconnect"] = strconv.FormatBool(commitOnDisconnect)
-	case "mount":
+	case "mounted-fs":
 		if err := a.startMountedSession(session, req.Format, req.FSType); err != nil {
 			a.unregisterNBDExport(session.ID)
 			_ = a.backend.Stop(session.ID)
@@ -186,6 +190,10 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		a.mountMu.Unlock()
 		resp["mount_path"] = mounted.MountPath
 		resp["nbd_device"] = mounted.NBDDevice
+	default:
+		_ = a.backend.Stop(session.ID)
+		writeError(w, fmt.Errorf("unsupported runtime %q", runtime))
+		return
 	}
 	writeJSON(w, http.StatusCreated, resp)
 }
@@ -288,7 +296,7 @@ func (a *app) resolveNBDExport(exportName string) (nbd.Device, error) {
 
 func (a *app) startMountedSession(session *storage.Session, format bool, fsType string) error {
 	if a.nbdAddr == "" {
-		return fmt.Errorf("NBD frontend is not enabled on this node")
+		return fmt.Errorf("mounted-fs runtime is not enabled on this node")
 	}
 	if fsType == "" {
 		fsType = "ext4"
@@ -421,6 +429,22 @@ func localNBDClientTarget(listenAddr string) (string, string) {
 		host = "localhost"
 	}
 	return host, port
+}
+
+func normalizeRuntime(runtime, legacyFrontend string) string {
+	if runtime != "" {
+		return runtime
+	}
+	switch legacyFrontend {
+	case "":
+		return "http-block"
+	case "mount":
+		return "mounted-fs"
+	case "nbd":
+		return "nbd-export-test"
+	default:
+		return legacyFrontend
+	}
 }
 
 func queryInt(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {

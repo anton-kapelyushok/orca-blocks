@@ -26,7 +26,7 @@ start_session() {
   local node="$1"
   curl -fsS -X POST "$CONTROL/sessions/start" \
     -H 'content-type: application/json' \
-    -d "{\"volume_id\":\"$VOLUME_ID\",\"force_node\":\"$node\"}"
+    -d "{\"volume_id\":\"$VOLUME_ID\",\"force_node\":\"$node\",\"runtime\":\"http-block\"}"
 }
 
 wait_for "$CONTROL/healthz"

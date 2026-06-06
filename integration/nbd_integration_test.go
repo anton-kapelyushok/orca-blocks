@@ -35,12 +35,12 @@ func TestNBDWriteCommitsAndCanResumeThroughNode(t *testing.T) {
 	t.Logf("creating volume %s for session-local NBD export", volumeID)
 	createNBDTestVolume(t, control, volumeID)
 
-	t.Log("starting session on node-1 with NBD frontend enabled")
+	t.Log("starting session on node-1 with low-level NBD export test runtime enabled")
 	start := startNBDSession(t, control, volumeID)
 	nbdAddr := start["nbd_addr"]
 	exportName := start["nbd_export_name"]
 	t.Logf("session=%s nbd_addr=%s export=%s", start["session_id"], nbdAddr, exportName)
-	t.Logf("waiting for node-local NBD frontend at %s", nbdAddr)
+	t.Logf("waiting for node-local NBD test listener at %s", nbdAddr)
 	waitForTCP(t, nbdAddr)
 
 	conn, size := dialNBD(t, nbdAddr, exportName)
@@ -152,7 +152,7 @@ func startNBDSession(t *testing.T, control, volumeID string) map[string]string {
 	postJSON(t, control+"/sessions/start", map[string]any{
 		"volume_id":            volumeID,
 		"force_node":           "node-1",
-		"frontend":             "nbd",
+		"runtime":              "nbd-export-test",
 		"commit_on_disconnect": true,
 	}, &start)
 	if start["nbd_addr"] == "" || start["nbd_export_name"] == "" {
