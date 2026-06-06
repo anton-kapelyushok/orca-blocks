@@ -24,6 +24,32 @@ make clean
 
 The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), and `19000`/`19001` (MinIO API/console).
 
+## Remote Linux/KVM Dev
+
+Firecracker development needs Linux KVM. You can keep editing locally and run the KVM-dependent loop on a reachable Linux VM:
+
+```sh
+make remote-authorize-key REMOTE_HOST=vboxuser@192.168.178.201
+make remote-check REMOTE_HOST=vboxuser@192.168.178.201
+make remote-setup REMOTE_HOST=vboxuser@192.168.178.201
+make remote-test REMOTE_HOST=vboxuser@192.168.178.201
+make remote-demo REMOTE_HOST=vboxuser@192.168.178.201
+```
+
+`remote-authorize-key` installs your local SSH public key, defaulting to `~/.ssh/id_ed25519.pub`, into the remote user's `authorized_keys`. The remote setup script verifies `/dev/kvm`, installs Docker Compose and development packages, enables Docker, and checks that a container can see `/dev/kvm`. If Docker only works through `sudo` immediately after setup, log out and back in or run `newgrp docker`.
+
+Useful knobs:
+
+```sh
+REMOTE_HOST=vboxuser@192.168.178.201
+REMOTE_DIR=~/orca-blocks
+LOCAL_PUBLIC_KEY=~/.ssh/id_ed25519.pub
+REMOTE_SSH_OPTS="-p 2222"
+REMOTE_TTY_SSH_OPTS="-tt -p 2222"
+REMOTE_SCP_OPTS="-P 2222"
+REMOTE_RSYNC_SSH_OPTS="-p 2222"
+```
+
 ## Runtimes
 
 `runtime:"http-block"` is the default. It does not use NBD or mount anything; the HTTP read/write endpoints call the storage backend directly. This is useful for storage tests, cache demos, and debugging.
