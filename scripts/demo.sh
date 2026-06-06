@@ -2,9 +2,9 @@
 set -euo pipefail
 
 CONTROL="${CONTROL_URL:-http://localhost:18080}"
-DATA="ORCA-BLOCKS-REMOTE-EXECUTION-DATA"
 OFFSET=10
 VOLUME_ID="demo-$(date +%s)"
+DATA="ORCA-BLOCKS-REMOTE-EXECUTION-DATA-$VOLUME_ID"
 
 json_get() {
   python3 -c 'import json,sys; obj=json.load(sys.stdin); print(obj[sys.argv[1]])' "$1"

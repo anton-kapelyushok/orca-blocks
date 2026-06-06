@@ -33,27 +33,12 @@ func TestNBDWriteCommitsAndCanResumeThroughNode(t *testing.T) {
 
 	volumeID := fmt.Sprintf("nbd-itest-%d", time.Now().UnixNano())
 	t.Logf("creating volume %s for session-local NBD export", volumeID)
-	var volume map[string]any
-	postJSON(t, control+"/volumes/create", map[string]any{
-		"volume_id":  volumeID,
-		"size_bytes": 1024 * 1024,
-		"chunk_size": 64 * 1024,
-	}, &volume)
+	createNBDTestVolume(t, control, volumeID)
 
 	t.Log("starting session on node-1 with NBD frontend enabled")
-	commitOnDisconnect := true
-	var start map[string]string
-	postJSON(t, control+"/sessions/start", map[string]any{
-		"volume_id":            volumeID,
-		"force_node":           "node-1",
-		"frontend":             "nbd",
-		"commit_on_disconnect": commitOnDisconnect,
-	}, &start)
+	start := startNBDSession(t, control, volumeID)
 	nbdAddr := start["nbd_addr"]
 	exportName := start["nbd_export_name"]
-	if nbdAddr == "" || exportName == "" {
-		t.Fatalf("missing NBD session fields in start response: %+v", start)
-	}
 	t.Logf("session=%s nbd_addr=%s export=%s", start["session_id"], nbdAddr, exportName)
 	t.Logf("waiting for node-local NBD frontend at %s", nbdAddr)
 	waitForTCP(t, nbdAddr)
@@ -90,6 +75,99 @@ func TestNBDWriteCommitsAndCanResumeThroughNode(t *testing.T) {
 	}
 	stats := getJSON(t, fmt.Sprintf("%s/sessions/%s/stats", session["node_url"], session["session_id"]))
 	t.Logf("node-1 read after NBD commit got hits=%v misses=%v remote_fetches=%v zero_fills=%v", stats["cache_hits"], stats["cache_misses"], stats["remote_fetches"], stats["zero_fills"])
+}
+
+func TestNBDOneNodeServesTwoSessionExports(t *testing.T) {
+	control := getenv("CONTROL_URL", "http://localhost:18080")
+
+	t.Logf("waiting for control service at %s", control)
+	waitFor(t, control+"/healthz")
+
+	volumeA := fmt.Sprintf("nbd-two-a-%d", time.Now().UnixNano())
+	volumeB := fmt.Sprintf("nbd-two-b-%d", time.Now().UnixNano())
+	t.Logf("creating volumes %s and %s", volumeA, volumeB)
+	createNBDTestVolume(t, control, volumeA)
+	createNBDTestVolume(t, control, volumeB)
+
+	t.Log("starting two NBD-backed sessions on node-1")
+	startA := startNBDSession(t, control, volumeA)
+	startB := startNBDSession(t, control, volumeB)
+	if startA["nbd_addr"] != startB["nbd_addr"] {
+		t.Fatalf("expected both sessions on the same node NBD listener, got %s and %s", startA["nbd_addr"], startB["nbd_addr"])
+	}
+	if startA["nbd_export_name"] == startB["nbd_export_name"] {
+		t.Fatalf("expected distinct export names, got %s", startA["nbd_export_name"])
+	}
+	t.Logf("same NBD listener=%s exportA=%s exportB=%s", startA["nbd_addr"], startA["nbd_export_name"], startB["nbd_export_name"])
+	waitForTCP(t, startA["nbd_addr"])
+
+	connA, sizeA := dialNBD(t, startA["nbd_addr"], startA["nbd_export_name"])
+	defer connA.Close()
+	connB, sizeB := dialNBD(t, startB["nbd_addr"], startB["nbd_export_name"])
+	defer connB.Close()
+	t.Logf("connected export A size=%d and export B size=%d", sizeA, sizeB)
+
+	offset := int64(192 * 1024)
+	dataA := []byte("payload-for-session-export-A")
+	dataB := []byte("payload-for-session-export-B")
+
+	t.Log("writing different bytes to each NBD export at the same offset")
+	nbdWrite(t, connA, 1, offset, dataA)
+	nbdWrite(t, connB, 1, offset, dataB)
+	nbdFlush(t, connA, 2)
+	nbdFlush(t, connB, 2)
+
+	t.Log("reading each export before commit to prove routing stays session-local")
+	gotA := nbdRead(t, connA, 3, offset, int64(len(dataA)))
+	gotB := nbdRead(t, connB, 3, offset, int64(len(dataB)))
+	if !bytes.Equal(gotA, dataA) {
+		t.Fatalf("export A read = %q, want %q", gotA, dataA)
+	}
+	if !bytes.Equal(gotB, dataB) {
+		t.Fatalf("export B read = %q, want %q", gotB, dataB)
+	}
+
+	t.Log("disconnecting both exports; each session commits independently")
+	nbdDisconnect(t, connA, 4)
+	nbdDisconnect(t, connB, 4)
+
+	t.Log("resuming both volumes and verifying they kept distinct contents")
+	verifyCommittedBytes(t, control, volumeA, offset, dataA)
+	verifyCommittedBytes(t, control, volumeB, offset, dataB)
+}
+
+func createNBDTestVolume(t *testing.T, control, volumeID string) {
+	t.Helper()
+	var volume map[string]any
+	postJSON(t, control+"/volumes/create", map[string]any{
+		"volume_id":  volumeID,
+		"size_bytes": 1024 * 1024,
+		"chunk_size": 64 * 1024,
+	}, &volume)
+}
+
+func startNBDSession(t *testing.T, control, volumeID string) map[string]string {
+	t.Helper()
+	var start map[string]string
+	postJSON(t, control+"/sessions/start", map[string]any{
+		"volume_id":            volumeID,
+		"force_node":           "node-1",
+		"frontend":             "nbd",
+		"commit_on_disconnect": true,
+	}, &start)
+	if start["nbd_addr"] == "" || start["nbd_export_name"] == "" {
+		t.Fatalf("missing NBD session fields in start response: %+v", start)
+	}
+	return start
+}
+
+func verifyCommittedBytes(t *testing.T, control, volumeID string, offset int64, want []byte) {
+	t.Helper()
+	session := startSession(t, control, volumeID, "node-1")
+	got := getRaw(t, fmt.Sprintf("%s/sessions/%s/read?offset=%d&length=%d", session["node_url"], session["session_id"], offset, len(want)))
+	if !bytes.Equal(got, want) {
+		t.Fatalf("committed read for volume %s = %q, want %q", volumeID, got, want)
+	}
 }
 
 func waitForTCP(t *testing.T, addr string) {

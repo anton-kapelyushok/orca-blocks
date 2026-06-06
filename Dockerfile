@@ -9,5 +9,6 @@ ARG TARGET=./cmd/node-service
 RUN CGO_ENABLED=0 go build -o /out/service ${TARGET}
 
 FROM alpine:3.22
+RUN apk add --no-cache e2fsprogs kmod nbd util-linux
 COPY --from=build /out/service /service
 ENTRYPOINT ["/service"]

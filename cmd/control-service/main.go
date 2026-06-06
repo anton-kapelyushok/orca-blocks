@@ -116,6 +116,8 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		ForceNode          string `json:"force_node"`
 		Frontend           string `json:"frontend"`
 		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
+		Format             bool   `json:"format"`
+		FSType             string `json:"fs_type"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -137,6 +139,12 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.CommitOnDisconnect != nil {
 		startReq["commit_on_disconnect"] = *req.CommitOnDisconnect
+	}
+	if req.Format {
+		startReq["format"] = req.Format
+	}
+	if req.FSType != "" {
+		startReq["fs_type"] = req.FSType
 	}
 	body, _ := json.Marshal(startReq)
 	resp, err := a.client.Post(selected.URL+"/sessions/start", "application/json", bytes.NewReader(body))

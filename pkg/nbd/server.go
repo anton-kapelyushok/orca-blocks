@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -16,6 +17,13 @@ const (
 	requestMagic    = uint32(0x25609513)
 	replyMagic      = uint32(0x67446698)
 	optExportName   = uint32(1)
+	optAbort        = uint32(2)
+	optGo           = uint32(7)
+	repMagic        = uint64(0x3e889045565a9)
+	repAck          = uint32(1)
+	repInfo         = uint32(3)
+	repErrUnsup     = uint32(0x80000001)
+	infoExport      = uint16(0)
 	flagFixedNew    = uint16(1)
 	flagNoZeroes    = uint16(2)
 	transHasFlags   = uint16(1)
@@ -96,31 +104,50 @@ func (s *Server) handshake(rw io.ReadWriter) (Device, error) {
 	}
 	clientNoZeroes := binary.BigEndian.Uint32(clientFlags[:])&uint32(flagNoZeroes) != 0
 
-	var optHeader [16]byte
-	if _, err := io.ReadFull(rw, optHeader[:]); err != nil {
-		return nil, err
-	}
-	if got := binary.BigEndian.Uint64(optHeader[0:8]); got != iHaveOpt {
-		return nil, fmt.Errorf("invalid option magic 0x%x", got)
-	}
-	if got := binary.BigEndian.Uint32(optHeader[8:12]); got != optExportName {
-		return nil, fmt.Errorf("unsupported NBD option %d", got)
-	}
-	nameLen := binary.BigEndian.Uint32(optHeader[12:16])
-	if nameLen > 4096 {
-		return nil, fmt.Errorf("export name too long: %d", nameLen)
-	}
-	exportName := make([]byte, int(nameLen))
-	if nameLen > 0 {
-		if _, err := io.ReadFull(readerOnly{rw}, exportName); err != nil {
+	for {
+		var optHeader [16]byte
+		if _, err := io.ReadFull(rw, optHeader[:]); err != nil {
 			return nil, err
 		}
-	}
+		if got := binary.BigEndian.Uint64(optHeader[0:8]); got != iHaveOpt {
+			return nil, fmt.Errorf("invalid option magic 0x%x", got)
+		}
+		opt := binary.BigEndian.Uint32(optHeader[8:12])
+		optLen := binary.BigEndian.Uint32(optHeader[12:16])
+		if optLen > 64*1024 {
+			return nil, fmt.Errorf("NBD option payload too large: %d", optLen)
+		}
+		payload := make([]byte, int(optLen))
+		if optLen > 0 {
+			if _, err := io.ReadFull(readerOnly{rw}, payload); err != nil {
+				return nil, err
+			}
+		}
 
-	device, err := s.resolveDevice(string(exportName))
-	if err != nil {
-		return nil, err
+		switch opt {
+		case optExportName:
+			device, err := s.resolveDevice(string(payload))
+			if err != nil {
+				return nil, err
+			}
+			return s.writeExport(rw, device, clientNoZeroes)
+		case optGo:
+			device, err := s.handleOptGo(rw, opt, payload)
+			if err != nil {
+				return nil, err
+			}
+			return device, nil
+		case optAbort:
+			return nil, io.EOF
+		default:
+			if err := writeOptionReply(rw, opt, repErrUnsup, nil); err != nil {
+				return nil, err
+			}
+		}
 	}
+}
+
+func (s *Server) writeExport(rw io.ReadWriter, device Device, clientNoZeroes bool) (Device, error) {
 	var export [10]byte
 	binary.BigEndian.PutUint64(export[0:8], uint64(device.Size()))
 	binary.BigEndian.PutUint16(export[8:10], transHasFlags|transSendFlush|transSendFUA)
@@ -128,7 +155,39 @@ func (s *Server) handshake(rw io.ReadWriter) (Device, error) {
 		return nil, err
 	}
 	if !clientNoZeroes {
-		_, err := rw.Write(make([]byte, 124))
+		if _, err := rw.Write(make([]byte, 124)); err != nil {
+			return nil, err
+		}
+	}
+	return device, nil
+}
+
+func (s *Server) handleOptGo(rw io.ReadWriter, opt uint32, payload []byte) (Device, error) {
+	if len(payload) < 6 {
+		return nil, fmt.Errorf("invalid NBD_OPT_GO payload length %d", len(payload))
+	}
+	nameLen := binary.BigEndian.Uint32(payload[0:4])
+	if nameLen > 4096 || int(4+nameLen+2) > len(payload) {
+		return nil, fmt.Errorf("invalid NBD_OPT_GO export name length %d", nameLen)
+	}
+	exportName := string(payload[4 : 4+nameLen])
+	device, err := s.resolveDevice(exportName)
+	if err != nil {
+		return nil, err
+	}
+
+	var info bytes.Buffer
+	var infoHeader [2]byte
+	binary.BigEndian.PutUint16(infoHeader[:], infoExport)
+	info.Write(infoHeader[:])
+	var export [10]byte
+	binary.BigEndian.PutUint64(export[0:8], uint64(device.Size()))
+	binary.BigEndian.PutUint16(export[8:10], transHasFlags|transSendFlush|transSendFUA)
+	info.Write(export[:])
+	if err := writeOptionReply(rw, opt, repInfo, info.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := writeOptionReply(rw, opt, repAck, nil); err != nil {
 		return nil, err
 	}
 	return device, nil
@@ -148,6 +207,9 @@ func (s *Server) handleRequest(ctx context.Context, rw io.ReadWriter, device Dev
 	length := int64(binary.BigEndian.Uint32(header[24:28]))
 	if length > maxRequestBytes {
 		return false, fmt.Errorf("request too large: %d", length)
+	}
+	if device == nil {
+		return false, fmt.Errorf("missing NBD device")
 	}
 	if offset < 0 || length < 0 || offset+length > device.Size() {
 		if cmd == cmdWrite && length > 0 {
@@ -206,6 +268,22 @@ func writeReply(w io.Writer, handle uint64, errno uint32, data []byte) error {
 	binary.BigEndian.PutUint32(reply[0:4], replyMagic)
 	binary.BigEndian.PutUint32(reply[4:8], errno)
 	binary.BigEndian.PutUint64(reply[8:16], handle)
+	if _, err := w.Write(reply[:]); err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		_, err := w.Write(data)
+		return err
+	}
+	return nil
+}
+
+func writeOptionReply(w io.Writer, opt, rep uint32, data []byte) error {
+	var reply [20]byte
+	binary.BigEndian.PutUint64(reply[0:8], repMagic)
+	binary.BigEndian.PutUint32(reply[8:12], opt)
+	binary.BigEndian.PutUint32(reply[12:16], rep)
+	binary.BigEndian.PutUint32(reply[16:20], uint32(len(data)))
 	if _, err := w.Write(reply[:]); err != nil {
 		return err
 	}

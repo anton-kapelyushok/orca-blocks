@@ -2,12 +2,12 @@
 
 This repository contains a local Docker Compose prototype for the hard storage path of a remote-execution block backend. It emulates two execution nodes with independent persistent local caches, MinIO as durable S3-compatible chunk storage, and Postgres metadata for volumes, snapshots, and scheduling hints.
 
-Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The HTTP node API and NBD frontend are both thin frontends over the storage package.
+Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The HTTP node API, raw NBD frontend, and node-managed mounted-session frontend are thin frontends over the storage package.
 
 ## Architecture
 
 - `control-service`: creates volumes and schedules sessions. It tracks `last_node` in Postgres and prefers that node when it is healthy.
-- `node-1` and `node-2`: expose the block backend HTTP API. Each node has its own Docker volume mounted as `/cache`.
+- `node-1` and `node-2`: expose the block backend HTTP API and run a local NBD listener. Each node has its own Docker volume mounted as `/cache`.
 - `minio`: stores immutable chunks under `chunks/{sha256}` and snapshot manifests under `manifests/{snapshot_id}.json`.
 - `postgres`: stores volume metadata, latest snapshot pointers, snapshot records, and last-node hints.
 - `pkg/storage`: reusable storage engine for chunk math, manifests, lazy reads, dirty overlays, commits, local cache lookup/fill, and LRU eviction.
@@ -25,6 +25,20 @@ make clean
 The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), and `19000`/`19001` (MinIO API/console).
 
 Each node also exposes a session-local NBD listener: `11081` for node-1 and `11082` for node-2. NBD exports are created by starting a session with `{"frontend":"nbd"}`. The response includes `nbd_addr` and `nbd_export_name`; the export name is the session ID. NBD `READ` and `WRITE` call that session's storage backend directly. NBD `FLUSH` fsyncs the disk-backed dirty overlay but does not create a snapshot commit. Use `commit_on_disconnect:true` in the session-start request if you want the MVP export to commit when the NBD client disconnects.
+
+For the pre-Firecracker milestone, prefer the node-managed mounted frontend:
+
+```json
+{
+  "volume_id": "mount-demo",
+  "force_node": "node-1",
+  "frontend": "mount",
+  "format": true,
+  "fs_type": "ext4"
+}
+```
+
+With `frontend:"mount"`, session start happens on the selected node, registers a session-local NBD export, attaches it to a free `/dev/nbdX` inside that node container, optionally formats it, and mounts it under `/mnt/orca-sessions/{session_id}`. The response includes `mount_path` and `nbd_device`. `POST /sessions/{id}/commit` unmounts, disconnects the NBD device, commits dirty chunks to a new snapshot, and releases the device. `POST /sessions/{id}/stop` unmounts and disconnects without committing.
 
 Example host-side attach flow on a Linux machine with NBD tools:
 
