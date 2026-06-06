@@ -24,6 +24,10 @@ type Backend struct {
 	sessions map[string]*Session
 }
 
+type CommitOptions struct {
+	UploadBatchChunks int
+}
+
 type Session struct {
 	ID             string
 	Volume         Volume
@@ -170,36 +174,33 @@ func (b *Backend) Write(ctx context.Context, sessionID string, offset int64, dat
 }
 
 func (b *Backend) Commit(ctx context.Context, sessionID string) (Snapshot, error) {
+	return b.CommitWithOptions(ctx, sessionID, CommitOptions{})
+}
+
+func (b *Backend) CommitWithOptions(ctx context.Context, sessionID string, opts CommitOptions) (Snapshot, error) {
 	session, err := b.session(sessionID)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	batchSize := opts.UploadBatchChunks
+	if batchSize <= 0 {
+		batchSize = 16
+	}
+
 	manifest := CopyManifest(session.BaseManifest)
 	dirtyIndexes := make([]int64, 0, len(session.Dirty))
 	for idx := range session.Dirty {
 		dirtyIndexes = append(dirtyIndexes, idx)
 	}
 	sort.Slice(dirtyIndexes, func(i, j int) bool { return dirtyIndexes[i] < dirtyIndexes[j] })
-	for _, idx := range dirtyIndexes {
-		chunk, err := session.readDirtyChunk(idx, session.Volume.ChunkSize)
-		if err != nil {
+	for start := 0; start < len(dirtyIndexes); start += batchSize {
+		end := start + batchSize
+		if end > len(dirtyIndexes) {
+			end = len(dirtyIndexes)
+		}
+		if err := b.commitDirtyBatch(ctx, session, dirtyIndexes[start:end], manifest); err != nil {
 			return Snapshot{}, err
 		}
-		chunkID := HashChunk(chunk)
-		key := chunkKey(chunkID)
-		exists, err := b.Store.Exists(ctx, key)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		if !exists {
-			if err := b.Store.Put(ctx, key, chunk); err != nil {
-				return Snapshot{}, err
-			}
-		}
-		if err := b.Cache.Put(chunkID, chunk); err != nil {
-			return Snapshot{}, err
-		}
-		manifest[idx] = chunkID
 	}
 
 	snapshotID := uuid.NewString()
@@ -222,6 +223,45 @@ func (b *Backend) Commit(ctx context.Context, sessionID string) (Snapshot, error
 	return snapshot, nil
 }
 
+func (b *Backend) commitDirtyBatch(ctx context.Context, session *Session, indexes []int64, manifest Manifest) error {
+	type dirtyChunk struct {
+		index int64
+		id    string
+		bytes []byte
+	}
+
+	batch := make([]dirtyChunk, 0, len(indexes))
+	for _, idx := range indexes {
+		chunk, err := session.readDirtyChunk(idx, session.Volume.ChunkSize)
+		if err != nil {
+			return err
+		}
+		batch = append(batch, dirtyChunk{
+			index: idx,
+			id:    HashChunk(chunk),
+			bytes: chunk,
+		})
+	}
+
+	for _, item := range batch {
+		key := chunkKey(item.id)
+		exists, err := b.Store.Exists(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if err := b.Store.Put(ctx, key, item.bytes); err != nil {
+				return err
+			}
+		}
+		if err := b.Cache.Put(item.id, item.bytes); err != nil {
+			return err
+		}
+		manifest[item.index] = item.id
+	}
+	return nil
+}
+
 func (b *Backend) Stop(sessionID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -241,6 +281,14 @@ func (b *Backend) Stats(sessionID string) (SessionStats, error) {
 	stats := session.Stats
 	stats.DirtyChunks = len(session.Dirty)
 	return stats, nil
+}
+
+func (b *Backend) FlushDirty(sessionID string) error {
+	session, err := b.session(sessionID)
+	if err != nil {
+		return err
+	}
+	return session.flushDirtyOverlay()
 }
 
 func (b *Backend) session(sessionID string) (*Session, error) {
@@ -343,6 +391,31 @@ func (s *Session) readDirtyChunk(index, chunkSize int64) ([]byte, error) {
 
 func (s *Session) writeDirtyChunk(index int64, chunk []byte) error {
 	return os.WriteFile(s.dirtyPath(index), chunk, 0o644)
+}
+
+func (s *Session) flushDirtyOverlay() error {
+	for index := range s.Dirty {
+		file, err := os.OpenFile(s.dirtyPath(index), os.O_RDONLY, 0)
+		if err != nil {
+			return err
+		}
+		if err := file.Sync(); err != nil {
+			_ = file.Close()
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+	dir, err := os.Open(s.DirtyDir)
+	if err != nil {
+		return err
+	}
+	if err := dir.Sync(); err != nil {
+		_ = dir.Close()
+		return err
+	}
+	return dir.Close()
 }
 
 func (s *Session) clearDirtyOverlay() error {

@@ -79,8 +79,12 @@ services:
       CACHE_DIR: /cache
       CACHE_MAX_BYTES: "67108864"
       PORT: "8080"
+      NBD_ADDR: :10809
+      NBD_PUBLIC_ADDR: localhost:11081
+      NBD_COMMIT_BATCH_CHUNKS: "16"
     ports:
       - "18081:8080"
+      - "11081:10809"
     volumes:
       - node-1-cache:/cache
     depends_on:
@@ -112,8 +116,12 @@ services:
       CACHE_DIR: /cache
       CACHE_MAX_BYTES: "67108864"
       PORT: "8080"
+      NBD_ADDR: :10809
+      NBD_PUBLIC_ADDR: localhost:11082
+      NBD_COMMIT_BATCH_CHUNKS: "16"
     ports:
       - "18082:8080"
+      - "11082:10809"
     volumes:
       - node-2-cache:/cache
     depends_on:
@@ -128,7 +136,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
-
 volumes:
   postgres-data:
   minio-data:

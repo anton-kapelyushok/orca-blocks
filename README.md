@@ -2,7 +2,7 @@
 
 This repository contains a local Docker Compose prototype for the hard storage path of a remote-execution block backend. It emulates two execution nodes with independent persistent local caches, MinIO as durable S3-compatible chunk storage, and Postgres metadata for volumes, snapshots, and scheduling hints.
 
-Firecracker, NBD, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The HTTP node API is a temporary frontend over the storage package so it can later be replaced by a block-device frontend.
+Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The HTTP node API and NBD frontend are both thin frontends over the storage package.
 
 ## Architecture
 
@@ -23,6 +23,31 @@ make clean
 ```
 
 The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), and `19000`/`19001` (MinIO API/console).
+
+Each node also exposes a session-local NBD listener: `11081` for node-1 and `11082` for node-2. NBD exports are created by starting a session with `{"frontend":"nbd"}`. The response includes `nbd_addr` and `nbd_export_name`; the export name is the session ID. NBD `READ` and `WRITE` call that session's storage backend directly. NBD `FLUSH` fsyncs the disk-backed dirty overlay but does not create a snapshot commit. Use `commit_on_disconnect:true` in the session-start request if you want the MVP export to commit when the NBD client disconnects.
+
+Example host-side attach flow on a Linux machine with NBD tools:
+
+```sh
+sudo modprobe nbd
+curl -sS -X POST localhost:18080/volumes/create \
+  -H 'content-type: application/json' \
+  -d '{"volume_id":"nbd-demo","size_bytes":1073741824,"chunk_size":4194304}'
+SESSION_JSON=$(curl -sS -X POST localhost:18080/sessions/start \
+  -H 'content-type: application/json' \
+  -d '{"volume_id":"nbd-demo","force_node":"node-1","frontend":"nbd","commit_on_disconnect":true}')
+EXPORT_NAME=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["nbd_export_name"])' <<< "$SESSION_JSON")
+sudo nbd-client localhost 11081 /dev/nbd0 -N "$EXPORT_NAME"
+sudo mkfs.ext4 /dev/nbd0
+sudo mount /dev/nbd0 /mnt/orca
+```
+
+Unmount/disconnect:
+
+```sh
+sudo umount /mnt/orca
+sudo nbd-client -d /dev/nbd0
+```
 
 `make demo` prints the validation flow:
 
@@ -67,3 +92,5 @@ A virtual volume has a `volume_id`, `size_bytes` defaulting to 10 GiB, `chunk_si
 Reads check the dirty session overlay first, then local node cache, then MinIO, then zero-fill. Writes materialize the base chunk on first write, patch bytes into it, and mark it dirty. Commit hashes dirty chunks, uploads missing immutable chunks to MinIO, writes a new manifest, updates the latest snapshot pointer, keeps committed chunks in the local cache, and clears dirty state.
 
 The dirty session overlay is disk-backed under each node's local cache volume at `dirty-sessions/{session_id}/{chunk_index}`. The node still tracks dirty chunk indexes in memory while the session is active, but the patched chunk bytes are written to disk until commit or stop. Commit reads those dirty chunk files, writes immutable chunks/manifests, then clears the overlay directory.
+
+Commit processes dirty chunks in bounded batches. The default batch is 16 chunks, configurable for node NBD exports with `NBD_COMMIT_BATCH_CHUNKS`. This keeps commit memory bounded now and leaves a clean path to make remote uploads asynchronous later.

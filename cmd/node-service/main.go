@@ -7,17 +7,25 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/anton-k/orca-blocks/pkg/nbd"
 	"github.com/anton-k/orca-blocks/pkg/storage"
 )
 
 type app struct {
-	backend *storage.Backend
+	backend          *storage.Backend
+	nbdExports       map[string]*nbd.StorageDevice
+	nbdMu            sync.RWMutex
+	nbdPublicAddr    string
+	nbdCommitBatch   int
+	nbdDefaultCommit bool
 }
 
 func main() {
@@ -43,7 +51,27 @@ func main() {
 	cache, err := storage.NewLocalCache(getenv("CACHE_DIR", "/cache"), cacheMax)
 	must(err)
 
-	a := &app{backend: storage.NewBackend(nodeID, repo, store, cache)}
+	a := &app{
+		backend:          storage.NewBackend(nodeID, repo, store, cache),
+		nbdExports:       map[string]*nbd.StorageDevice{},
+		nbdPublicAddr:    getenv("NBD_PUBLIC_ADDR", ""),
+		nbdCommitBatch:   int(mustInt64(getenv("NBD_COMMIT_BATCH_CHUNKS", "16"))),
+		nbdDefaultCommit: getenv("NBD_COMMIT_ON_DISCONNECT", "false") == "true",
+	}
+	if nbdAddr := getenv("NBD_ADDR", ""); nbdAddr != "" {
+		ln, err := net.Listen("tcp", nbdAddr)
+		must(err)
+		log.Printf("%s NBD listener on %s", nodeID, nbdAddr)
+		go func() {
+			server := &nbd.Server{
+				Resolve: a.resolveNBDExport,
+				Logger:  log.Default(),
+			}
+			if err := server.Serve(ctx, ln); err != nil {
+				log.Printf("NBD listener stopped: %v", err)
+			}
+		}()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "node_id": nodeID})
@@ -80,7 +108,9 @@ func (a *app) createVolume(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		VolumeID string `json:"volume_id"`
+		VolumeID           string `json:"volume_id"`
+		Frontend           string `json:"frontend"`
+		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -90,12 +120,39 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{
+	resp := map[string]string{
 		"session_id":       session.ID,
 		"volume_id":        session.Volume.VolumeID,
 		"node_id":          a.backend.NodeID,
 		"base_snapshot_id": session.BaseSnapshotID,
-	})
+	}
+	if req.Frontend == "nbd" {
+		if a.nbdPublicAddr == "" {
+			_ = a.backend.Stop(session.ID)
+			writeError(w, fmt.Errorf("NBD frontend is not enabled on this node"))
+			return
+		}
+		commitOnDisconnect := a.nbdDefaultCommit
+		if req.CommitOnDisconnect != nil {
+			commitOnDisconnect = *req.CommitOnDisconnect
+		}
+		a.registerNBDExport(session.ID, &nbd.StorageDevice{
+			Backend:            a.backend,
+			SessionID:          session.ID,
+			SizeBytes:          session.Volume.SizeBytes,
+			CommitOnDisconnect: commitOnDisconnect,
+			CommitOptions: storage.CommitOptions{
+				UploadBatchChunks: a.nbdCommitBatch,
+			},
+			OnDisconnect: func() {
+				a.unregisterNBDExport(session.ID)
+			},
+		})
+		resp["nbd_addr"] = a.nbdPublicAddr
+		resp["nbd_export_name"] = session.ID
+		resp["nbd_commit_on_disconnect"] = strconv.FormatBool(commitOnDisconnect)
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (a *app) read(w http.ResponseWriter, r *http.Request) {
@@ -140,10 +197,12 @@ func (a *app) commit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	a.unregisterNBDExport(r.PathValue("id"))
 	writeJSON(w, http.StatusCreated, snapshot)
 }
 
 func (a *app) stop(w http.ResponseWriter, r *http.Request) {
+	a.unregisterNBDExport(r.PathValue("id"))
 	if err := a.backend.Stop(r.PathValue("id")); err != nil {
 		writeError(w, err)
 		return
@@ -158,6 +217,28 @@ func (a *app) stats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+func (a *app) registerNBDExport(sessionID string, device *nbd.StorageDevice) {
+	a.nbdMu.Lock()
+	defer a.nbdMu.Unlock()
+	a.nbdExports[sessionID] = device
+}
+
+func (a *app) unregisterNBDExport(sessionID string) {
+	a.nbdMu.Lock()
+	defer a.nbdMu.Unlock()
+	delete(a.nbdExports, sessionID)
+}
+
+func (a *app) resolveNBDExport(exportName string) (nbd.Device, error) {
+	a.nbdMu.RLock()
+	defer a.nbdMu.RUnlock()
+	device, ok := a.nbdExports[exportName]
+	if !ok {
+		return nil, fmt.Errorf("unknown NBD export %q", exportName)
+	}
+	return device, nil
 }
 
 func queryInt(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
@@ -231,6 +312,12 @@ func mustenv(k string) string {
 		log.Fatalf("missing env %s", k)
 	}
 	return v
+}
+
+func mustInt64(v string) int64 {
+	n, err := strconv.ParseInt(v, 10, 64)
+	must(err)
+	return n
 }
 
 func must(err error) {

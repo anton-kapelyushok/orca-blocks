@@ -112,8 +112,10 @@ func (a *app) getVolume(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		VolumeID  string `json:"volume_id"`
-		ForceNode string `json:"force_node"`
+		VolumeID           string `json:"volume_id"`
+		ForceNode          string `json:"force_node"`
+		Frontend           string `json:"frontend"`
+		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -129,7 +131,14 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := json.Marshal(map[string]string{"volume_id": req.VolumeID})
+	startReq := map[string]any{"volume_id": req.VolumeID}
+	if req.Frontend != "" {
+		startReq["frontend"] = req.Frontend
+	}
+	if req.CommitOnDisconnect != nil {
+		startReq["commit_on_disconnect"] = *req.CommitOnDisconnect
+	}
+	body, _ := json.Marshal(startReq)
 	resp, err := a.client.Post(selected.URL+"/sessions/start", "application/json", bytes.NewReader(body))
 	if err != nil {
 		writeError(w, err)
