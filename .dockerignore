@@ -1,0 +1,10 @@
+.git
+.gradle
+.gocache
+.idea
+.kotlin
+build
+out
+bin
+*.iml
+HELP.md

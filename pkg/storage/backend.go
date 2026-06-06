@@ -1,0 +1,301 @@
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+
+	"github.com/google/uuid"
+)
+
+type Backend struct {
+	NodeID string
+	Repo   Repository
+	Store  ObjectStore
+	Cache  *LocalCache
+
+	mu       sync.Mutex
+	sessions map[string]*Session
+}
+
+type Session struct {
+	ID             string
+	Volume         Volume
+	BaseSnapshotID string
+	BaseManifest   Manifest
+	Dirty          map[int64][]byte
+	Stats          SessionStats
+}
+
+type SessionStats struct {
+	CacheHits     int64 `json:"cache_hits"`
+	CacheMisses   int64 `json:"cache_misses"`
+	RemoteFetches int64 `json:"remote_fetches"`
+	ZeroFills     int64 `json:"zero_fills"`
+	DirtyChunks   int   `json:"dirty_chunks"`
+}
+
+func NewBackend(nodeID string, repo Repository, store ObjectStore, cache *LocalCache) *Backend {
+	return &Backend{
+		NodeID:   nodeID,
+		Repo:     repo,
+		Store:    store,
+		Cache:    cache,
+		sessions: map[string]*Session{},
+	}
+}
+
+func (b *Backend) CreateVolume(ctx context.Context, id string, sizeBytes, chunkSize int64) (Volume, error) {
+	if id == "" {
+		id = uuid.NewString()
+	}
+	return b.Repo.CreateVolume(ctx, Volume{
+		VolumeID:  id,
+		SizeBytes: sizeBytes,
+		ChunkSize: chunkSize,
+	})
+}
+
+func (b *Backend) StartSession(ctx context.Context, volumeID string) (*Session, error) {
+	volume, err := b.Repo.GetVolume(ctx, volumeID)
+	if err != nil {
+		return nil, err
+	}
+	manifest := Manifest{}
+	if volume.LatestSnapshotID != "" {
+		snapshot, err := b.Repo.GetSnapshot(ctx, volume.LatestSnapshotID)
+		if err != nil {
+			return nil, err
+		}
+		manifest, err = b.loadManifest(ctx, snapshot.ManifestKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	session := &Session{
+		ID:             uuid.NewString(),
+		Volume:         volume,
+		BaseSnapshotID: volume.LatestSnapshotID,
+		BaseManifest:   manifest,
+		Dirty:          map[int64][]byte{},
+	}
+	b.mu.Lock()
+	b.sessions[session.ID] = session
+	b.mu.Unlock()
+	if err := b.Repo.UpdateLastNode(ctx, volumeID, b.NodeID); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func (b *Backend) Read(ctx context.Context, sessionID string, offset, length int64) ([]byte, error) {
+	session, err := b.session(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if offset+length > session.Volume.SizeBytes {
+		return nil, fmt.Errorf("read exceeds volume size")
+	}
+	ranges, err := ChunkIndexes(offset, length, session.Volume.ChunkSize)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, length)
+	for _, r := range ranges {
+		chunk, err := b.resolveChunk(ctx, session, r.Index)
+		if err != nil {
+			return nil, err
+		}
+		end := r.ChunkStart + int(r.ReqEnd-r.ReqStart)
+		out = append(out, chunk[r.ChunkStart:end]...)
+	}
+	return out, nil
+}
+
+func (b *Backend) Write(ctx context.Context, sessionID string, offset int64, data []byte) error {
+	session, err := b.session(sessionID)
+	if err != nil {
+		return err
+	}
+	if offset < 0 || offset+int64(len(data)) > session.Volume.SizeBytes {
+		return fmt.Errorf("write exceeds volume size")
+	}
+	ranges, err := ChunkIndexes(offset, int64(len(data)), session.Volume.ChunkSize)
+	if err != nil {
+		return err
+	}
+	var dataPos int64
+	for _, r := range ranges {
+		chunk, ok := session.Dirty[r.Index]
+		if !ok {
+			chunk, err = b.resolveChunk(ctx, session, r.Index)
+			if err != nil {
+				return err
+			}
+			chunk = append([]byte(nil), chunk...)
+		}
+		partLen := r.ReqEnd - r.ReqStart
+		copy(chunk[r.ChunkStart:r.ChunkStart+int(partLen)], data[dataPos:dataPos+partLen])
+		session.Dirty[r.Index] = chunk
+		dataPos += partLen
+	}
+	return nil
+}
+
+func (b *Backend) Commit(ctx context.Context, sessionID string) (Snapshot, error) {
+	session, err := b.session(sessionID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	manifest := CopyManifest(session.BaseManifest)
+	dirtyIndexes := make([]int64, 0, len(session.Dirty))
+	for idx := range session.Dirty {
+		dirtyIndexes = append(dirtyIndexes, idx)
+	}
+	sort.Slice(dirtyIndexes, func(i, j int) bool { return dirtyIndexes[i] < dirtyIndexes[j] })
+	for _, idx := range dirtyIndexes {
+		chunk := session.Dirty[idx]
+		chunkID := HashChunk(chunk)
+		key := chunkKey(chunkID)
+		exists, err := b.Store.Exists(ctx, key)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		if !exists {
+			if err := b.Store.Put(ctx, key, chunk); err != nil {
+				return Snapshot{}, err
+			}
+		}
+		if err := b.Cache.Put(chunkID, chunk); err != nil {
+			return Snapshot{}, err
+		}
+		manifest[idx] = chunkID
+	}
+
+	snapshotID := uuid.NewString()
+	manifestKey := manifestKey(snapshotID)
+	if err := b.saveManifest(ctx, manifestKey, manifest); err != nil {
+		return Snapshot{}, err
+	}
+	snapshot := Snapshot{SnapshotID: snapshotID, VolumeID: session.Volume.VolumeID, ManifestKey: manifestKey}
+	if err := b.Repo.CreateSnapshot(ctx, snapshot); err != nil {
+		return Snapshot{}, err
+	}
+	if err := b.Repo.UpdateLatestSnapshot(ctx, session.Volume.VolumeID, snapshotID); err != nil {
+		return Snapshot{}, err
+	}
+	session.BaseSnapshotID = snapshotID
+	session.BaseManifest = manifest
+	session.Dirty = map[int64][]byte{}
+	return snapshot, nil
+}
+
+func (b *Backend) Stop(sessionID string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.sessions[sessionID]; !ok {
+		return ErrNotFound
+	}
+	delete(b.sessions, sessionID)
+	return nil
+}
+
+func (b *Backend) Stats(sessionID string) (SessionStats, error) {
+	session, err := b.session(sessionID)
+	if err != nil {
+		return SessionStats{}, err
+	}
+	stats := session.Stats
+	stats.DirtyChunks = len(session.Dirty)
+	return stats, nil
+}
+
+func (b *Backend) session(sessionID string) (*Session, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s, ok := b.sessions[sessionID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return s, nil
+}
+
+func (b *Backend) resolveChunk(ctx context.Context, session *Session, index int64) ([]byte, error) {
+	if dirty, ok := session.Dirty[index]; ok {
+		return dirty, nil
+	}
+	chunkID, ok := session.BaseManifest[index]
+	if !ok {
+		session.Stats.ZeroFills++
+		return ZeroChunk(session.Volume.ChunkSize), nil
+	}
+	if cached, ok, err := b.Cache.Get(chunkID); err != nil {
+		return nil, err
+	} else if ok {
+		session.Stats.CacheHits++
+		return normalizeChunk(cached, session.Volume.ChunkSize)
+	}
+
+	session.Stats.CacheMisses++
+	remote, err := b.Store.Get(ctx, chunkKey(chunkID))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			session.Stats.ZeroFills++
+			return ZeroChunk(session.Volume.ChunkSize), nil
+		}
+		return nil, err
+	}
+	session.Stats.RemoteFetches++
+	remote, err = normalizeChunk(remote, session.Volume.ChunkSize)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.Cache.Put(chunkID, remote); err != nil {
+		return nil, err
+	}
+	return remote, nil
+}
+
+func (b *Backend) loadManifest(ctx context.Context, key string) (Manifest, error) {
+	raw, err := b.Store.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	var wire map[string]string
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, err
+	}
+	return ManifestFromWire(wire)
+}
+
+func (b *Backend) saveManifest(ctx context.Context, key string, manifest Manifest) error {
+	raw, err := json.MarshalIndent(ManifestToWire(manifest), "", "  ")
+	if err != nil {
+		return err
+	}
+	return b.Store.Put(ctx, key, raw)
+}
+
+func normalizeChunk(b []byte, chunkSize int64) ([]byte, error) {
+	if int64(len(b)) == chunkSize {
+		return b, nil
+	}
+	if int64(len(b)) > chunkSize {
+		return nil, fmt.Errorf("chunk length %d exceeds chunk size %d", len(b), chunkSize)
+	}
+	out := ZeroChunk(chunkSize)
+	copy(out, b)
+	return out, nil
+}
+
+func chunkKey(chunkID string) string {
+	return "chunks/" + chunkID
+}
+
+func manifestKey(snapshotID string) string {
+	return "manifests/" + snapshotID + ".json"
+}

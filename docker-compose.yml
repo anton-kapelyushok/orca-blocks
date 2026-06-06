@@ -1,0 +1,136 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: orca
+      POSTGRES_PASSWORD: orca
+      POSTGRES_DB: orca
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orca -d orca"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/orca-blocks || true
+      "
+
+  control-service:
+    build:
+      context: .
+      args:
+        TARGET: ./cmd/control-service
+    environment:
+      DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
+      NODE_1_URL: http://node-1:8080
+      NODE_2_URL: http://node-2:8080
+      NODE_1_PUBLIC_URL: http://localhost:18081
+      NODE_2_PUBLIC_URL: http://localhost:18082
+      PORT: "8080"
+    ports:
+      - "18080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      node-1:
+        condition: service_healthy
+      node-2:
+        condition: service_healthy
+
+  node-1:
+    build:
+      context: .
+      args:
+        TARGET: ./cmd/node-service
+    environment:
+      NODE_ID: node-1
+      DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: orca-blocks
+      CACHE_DIR: /cache
+      CACHE_MAX_BYTES: "67108864"
+      PORT: "8080"
+    ports:
+      - "18081:8080"
+    volumes:
+      - node-1-cache:/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  node-2:
+    build:
+      context: .
+      args:
+        TARGET: ./cmd/node-service
+    environment:
+      NODE_ID: node-2
+      DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: orca-blocks
+      CACHE_DIR: /cache
+      CACHE_MAX_BYTES: "67108864"
+      PORT: "8080"
+    ports:
+      - "18082:8080"
+    volumes:
+      - node-2-cache:/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  postgres-data:
+  minio-data:
+  node-1-cache:
+  node-2-cache:
