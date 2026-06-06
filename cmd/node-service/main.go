@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,29 +23,50 @@ import (
 )
 
 type app struct {
-	backend          *storage.Backend
-	nbdExports       map[string]*nbd.StorageDevice
-	nbdMu            sync.RWMutex
-	nbdAddr          string
-	nbdPublicAddr    string
-	nbdCommitBatch   int
-	nbdDefaultCommit bool
-	nbdDeviceStart   int
-	nbdDeviceCount   int
-	requireNBD       bool
-	kvmDevice        string
-	requireKVM       bool
-	mountRoot        string
-	nbdDevicePrefix  string
-	mountMu          sync.Mutex
-	mounts           map[string]*mountedSession
-	usedNBDDevices   map[string]struct{}
+	backend             *storage.Backend
+	nbdExports          map[string]*nbd.StorageDevice
+	nbdMu               sync.RWMutex
+	nbdAddr             string
+	nbdPublicAddr       string
+	nbdCommitBatch      int
+	nbdDefaultCommit    bool
+	nbdDeviceStart      int
+	nbdDeviceCount      int
+	requireNBD          bool
+	kvmDevice           string
+	requireKVM          bool
+	firecrackerBin      string
+	firecrackerKernel   string
+	firecrackerRootFS   string
+	firecrackerInitrd   string
+	firecrackerBootMode string
+	firecrackerWorkDir  string
+	firecrackerTimeout  time.Duration
+	mountRoot           string
+	nbdDevicePrefix     string
+	mountMu             sync.Mutex
+	mounts              map[string]*mountedSession
+	usedNBDDevices      map[string]struct{}
 }
 
 type mountedSession struct {
 	SessionID string
 	NBDDevice string
 	MountPath string
+}
+
+type firecrackerRunRequest struct {
+	Mode           string
+	Payload        string
+	CommitAfterRun *bool
+}
+
+type firecrackerStepTiming struct {
+	Name       string `json:"name"`
+	StartedAt  string `json:"started_at"`
+	DurationMS int64  `json:"duration_ms"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
 }
 
 func main() {
@@ -71,21 +93,28 @@ func main() {
 	must(err)
 
 	a := &app{
-		backend:          storage.NewBackend(nodeID, repo, store, cache),
-		nbdExports:       map[string]*nbd.StorageDevice{},
-		nbdAddr:          getenv("NBD_ADDR", ""),
-		nbdPublicAddr:    getenv("NBD_PUBLIC_ADDR", ""),
-		nbdCommitBatch:   int(mustInt64(getenv("NBD_COMMIT_BATCH_CHUNKS", "16"))),
-		nbdDefaultCommit: getenv("NBD_COMMIT_ON_DISCONNECT", "false") == "true",
-		nbdDeviceStart:   int(mustInt64(getenv("NBD_DEVICE_START", "0"))),
-		nbdDeviceCount:   int(mustInt64(getenv("NBD_DEVICE_COUNT", "16"))),
-		requireNBD:       getenv("REQUIRE_NBD_DEVICES", "false") == "true",
-		kvmDevice:        getenv("KVM_DEVICE", "/dev/kvm"),
-		requireKVM:       getenv("REQUIRE_KVM", "false") == "true",
-		mountRoot:        getenv("MOUNT_ROOT", "/mnt/orca-sessions"),
-		nbdDevicePrefix:  getenv("NBD_DEVICE_PREFIX", "/dev/nbd"),
-		mounts:           map[string]*mountedSession{},
-		usedNBDDevices:   map[string]struct{}{},
+		backend:             storage.NewBackend(nodeID, repo, store, cache),
+		nbdExports:          map[string]*nbd.StorageDevice{},
+		nbdAddr:             getenv("NBD_ADDR", ""),
+		nbdPublicAddr:       getenv("NBD_PUBLIC_ADDR", ""),
+		nbdCommitBatch:      int(mustInt64(getenv("NBD_COMMIT_BATCH_CHUNKS", "16"))),
+		nbdDefaultCommit:    getenv("NBD_COMMIT_ON_DISCONNECT", "false") == "true",
+		nbdDeviceStart:      int(mustInt64(getenv("NBD_DEVICE_START", "0"))),
+		nbdDeviceCount:      int(mustInt64(getenv("NBD_DEVICE_COUNT", "16"))),
+		requireNBD:          getenv("REQUIRE_NBD_DEVICES", "false") == "true",
+		kvmDevice:           getenv("KVM_DEVICE", "/dev/kvm"),
+		requireKVM:          getenv("REQUIRE_KVM", "false") == "true",
+		firecrackerBin:      getenv("FIRECRACKER_BIN", "/firecracker-assets/firecracker"),
+		firecrackerKernel:   getenv("FIRECRACKER_KERNEL", "/firecracker-assets/vmlinux"),
+		firecrackerRootFS:   getenv("FIRECRACKER_ROOTFS", "/firecracker-assets/rootfs.ext4"),
+		firecrackerInitrd:   getenv("FIRECRACKER_INITRD", "/firecracker-assets/initramfs.cpio.gz"),
+		firecrackerBootMode: getenv("FIRECRACKER_BOOT_MODE", "initramfs"),
+		firecrackerWorkDir:  getenv("FIRECRACKER_WORK_DIR", "/tmp/orca-firecracker"),
+		firecrackerTimeout:  time.Duration(mustInt64(getenv("FIRECRACKER_TIMEOUT_SECONDS", "30"))) * time.Second,
+		mountRoot:           getenv("MOUNT_ROOT", "/mnt/orca-sessions"),
+		nbdDevicePrefix:     getenv("NBD_DEVICE_PREFIX", "/dev/nbd"),
+		mounts:              map[string]*mountedSession{},
+		usedNBDDevices:      map[string]struct{}{},
 	}
 	if err := a.preflightKVM(); err != nil {
 		if a.requireKVM {
@@ -158,6 +187,9 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
 		Format             bool   `json:"format"`
 		FSType             string `json:"fs_type"`
+		FirecrackerMode    string `json:"firecracker_mode"`
+		FirecrackerPayload string `json:"firecracker_payload"`
+		CommitAfterRun     *bool  `json:"commit_after_run"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -214,6 +246,21 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		a.mountMu.Unlock()
 		resp["mount_path"] = mounted.MountPath
 		resp["nbd_device"] = mounted.NBDDevice
+	case "firecracker":
+		result, err := a.runFirecrackerSession(r.Context(), session, firecrackerRunRequest{
+			Mode:           req.FirecrackerMode,
+			Payload:        req.FirecrackerPayload,
+			CommitAfterRun: req.CommitAfterRun,
+		})
+		if err != nil {
+			a.unregisterNBDExport(session.ID)
+			_ = a.backend.Stop(session.ID)
+			writeError(w, err)
+			return
+		}
+		for k, v := range result {
+			resp[k] = v
+		}
 	default:
 		_ = a.backend.Stop(session.ID)
 		writeError(w, fmt.Errorf("unsupported runtime %q", runtime))
@@ -389,6 +436,221 @@ func (a *app) startMountedSession(session *storage.Session, format bool, fsType 
 	return nil
 }
 
+func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Session, req firecrackerRunRequest) (map[string]string, error) {
+	timings := []firecrackerStepTiming{}
+	record := func(name string, started time.Time, err error) {
+		timing := firecrackerStepTiming{
+			Name:       name,
+			StartedAt:  started.UTC().Format(time.RFC3339Nano),
+			DurationMS: time.Since(started).Milliseconds(),
+			Status:     "ok",
+		}
+		if err != nil {
+			timing.Status = "error"
+			timing.Error = err.Error()
+		}
+		timings = append(timings, timing)
+	}
+	writeTimings := func(path string) {
+		raw, err := json.MarshalIndent(timings, "", "  ")
+		if err != nil {
+			log.Printf("marshal firecracker timings failed: %v", err)
+			return
+		}
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			log.Printf("write firecracker timings failed: %v", err)
+		}
+	}
+
+	mode := req.Mode
+	if mode == "" {
+		mode = "smoke"
+	}
+	if mode != "smoke" && mode != "write" && mode != "read" {
+		return nil, fmt.Errorf("unsupported firecracker_mode %q", mode)
+	}
+	payload := req.Payload
+	if payload == "" {
+		payload = "hello-from-firecracker"
+	}
+	commitAfterRun := mode == "write"
+	if req.CommitAfterRun != nil {
+		commitAfterRun = *req.CommitAfterRun
+	}
+	started := time.Now()
+	if err := a.preflightFirecracker(); err != nil {
+		record("preflight_firecracker", started, err)
+		return nil, err
+	}
+	record("preflight_firecracker", started, nil)
+	if a.nbdAddr == "" {
+		return nil, fmt.Errorf("firecracker runtime requires NBD_ADDR to attach the Orca volume")
+	}
+	started = time.Now()
+	if err := a.preflightNBDDevices(); err != nil {
+		record("preflight_nbd", started, err)
+		return nil, err
+	}
+	record("preflight_nbd", started, nil)
+	started = time.Now()
+	device, err := a.allocateNBDDevice()
+	if err != nil {
+		record("allocate_nbd_device", started, err)
+		return nil, err
+	}
+	record("allocate_nbd_device", started, nil)
+	workDir := filepath.Join(a.firecrackerWorkDir, session.ID)
+	rootfsCopy := filepath.Join(workDir, "rootfs.ext4")
+	initrdCopy := filepath.Join(workDir, "initramfs.cpio.gz")
+	socketPath := filepath.Join(workDir, "firecracker.sock")
+	configPath := filepath.Join(workDir, "firecracker.json")
+	logPath := filepath.Join(workDir, "firecracker.log")
+	serialPath := filepath.Join(workDir, "serial.log")
+	timingsPath := filepath.Join(workDir, "timings.json")
+	detached := false
+	detach := func() {
+		if detached {
+			return
+		}
+		started := time.Now()
+		err := runCommand("nbd-client", "-d", device)
+		record("detach_nbd_device", started, err)
+		a.unregisterNBDExport(session.ID)
+		a.releaseNBDDevice(device)
+		detached = true
+	}
+	defer func() {
+		detach()
+		writeTimings(timingsPath)
+	}()
+
+	started = time.Now()
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		record("prepare_workdir", started, err)
+		return nil, err
+	}
+	record("prepare_workdir", started, nil)
+
+	firecrackerBootMode := a.firecrackerBootMode
+	var guestDataDevice string
+	var rootfsPath string
+	var initrdPath string
+	switch firecrackerBootMode {
+	case "rootfs":
+		guestDataDevice = "/dev/vdb"
+		started = time.Now()
+		if err := copyFile(a.firecrackerRootFS, rootfsCopy); err != nil {
+			record("copy_rootfs", started, err)
+			return nil, fmt.Errorf("copy firecracker rootfs: %w", err)
+		}
+		record("copy_rootfs", started, nil)
+		rootfsPath = rootfsCopy
+	case "initramfs":
+		guestDataDevice = "/dev/vda"
+		started = time.Now()
+		if err := copyFile(a.firecrackerInitrd, initrdCopy); err != nil {
+			record("copy_initramfs", started, err)
+			return nil, fmt.Errorf("copy firecracker initramfs: %w", err)
+		}
+		record("copy_initramfs", started, nil)
+		initrdPath = initrdCopy
+	default:
+		return nil, fmt.Errorf("unsupported FIRECRACKER_BOOT_MODE %q", firecrackerBootMode)
+	}
+
+	started = time.Now()
+	a.registerNBDExport(session.ID, &nbd.StorageDevice{
+		Backend:            a.backend,
+		SessionID:          session.ID,
+		SizeBytes:          session.Volume.SizeBytes,
+		CommitOnDisconnect: false,
+		CommitOptions: storage.CommitOptions{
+			UploadBatchChunks: a.nbdCommitBatch,
+		},
+	})
+	record("register_nbd_export", started, nil)
+	nbdHost, nbdPort := localNBDClientTarget(a.nbdAddr)
+	started = time.Now()
+	if err := runCommand("nbd-client", nbdHost, nbdPort, device, "-N", session.ID); err != nil {
+		record("attach_nbd_device", started, err)
+		return nil, err
+	}
+	record("attach_nbd_device", started, nil)
+
+	bootArgs := firecrackerBootArgs(firecrackerBootMode, mode, payload, guestDataDevice)
+	started = time.Now()
+	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, initrdPath, device, false, logPath, bootArgs); err != nil {
+		record("write_firecracker_config", started, err)
+		return nil, err
+	}
+	record("write_firecracker_config", started, nil)
+
+	runCtx, cancel := context.WithTimeout(ctx, a.firecrackerTimeout)
+	defer cancel()
+	log.Printf("running firecracker session=%s mode=%s device=%s", session.ID, mode, device)
+	cmd := exec.CommandContext(runCtx, a.firecrackerBin, "--api-sock", socketPath, "--config-file", configPath)
+	started = time.Now()
+	out, err := cmd.CombinedOutput()
+	serial := string(out)
+	if writeErr := os.WriteFile(serialPath, out, 0o644); writeErr != nil {
+		log.Printf("write firecracker serial log failed: %v", writeErr)
+	}
+	if runCtx.Err() == context.DeadlineExceeded {
+		record("run_firecracker", started, runCtx.Err())
+		return nil, fmt.Errorf("firecracker timed out after %s: %s", a.firecrackerTimeout, tail(serial, 4096))
+	}
+	if err != nil {
+		record("run_firecracker", started, err)
+		return nil, fmt.Errorf("firecracker failed: %w: %s", err, tail(serial, 4096))
+	}
+	if !strings.Contains(serial, "orca-init: "+mode+" ok") {
+		err := fmt.Errorf("firecracker guest did not report %s ok", mode)
+		record("run_firecracker", started, err)
+		return nil, fmt.Errorf("%w: %s", err, tail(serial, 4096))
+	}
+	record("run_firecracker", started, nil)
+	if mode == "write" {
+		started = time.Now()
+		if err := runCommand("sync"); err != nil {
+			record("sync_host", started, err)
+			return nil, err
+		}
+		record("sync_host", started, nil)
+		started = time.Now()
+		if err := runCommand("blockdev", "--flushbufs", device); err != nil {
+			record("flush_nbd_device", started, err)
+			return nil, err
+		}
+		record("flush_nbd_device", started, nil)
+	}
+
+	resp := map[string]string{
+		"firecracker_mode":      mode,
+		"firecracker_boot_mode": firecrackerBootMode,
+		"firecracker_device":    device,
+		"firecracker_output":    orcaInitLines(serial),
+		"firecracker_work_dir":  workDir,
+	}
+	detach()
+	resp["firecracker_timings"] = timingsJSON(timings)
+	if commitAfterRun {
+		started = time.Now()
+		snapshot, err := a.backend.CommitWithOptions(ctx, session.ID, storage.CommitOptions{
+			UploadBatchChunks: a.nbdCommitBatch,
+		})
+		if err != nil {
+			record("commit_snapshot", started, err)
+			resp["firecracker_timings"] = timingsJSON(timings)
+			return nil, err
+		}
+		record("commit_snapshot", started, nil)
+		resp["snapshot_id"] = snapshot.SnapshotID
+		resp["manifest_key"] = snapshot.ManifestKey
+		resp["firecracker_timings"] = timingsJSON(timings)
+	}
+	return resp, nil
+}
+
 func (a *app) detachMountedSession(sessionID string) error {
 	a.mountMu.Lock()
 	mounted, ok := a.mounts[sessionID]
@@ -467,8 +729,36 @@ func (a *app) preflightKVM() error {
 	return nil
 }
 
+func (a *app) preflightFirecracker() error {
+	if err := a.preflightKVM(); err != nil {
+		return err
+	}
+	required := map[string]string{
+		"firecracker binary": a.firecrackerBin,
+		"firecracker kernel": a.firecrackerKernel,
+	}
+	switch a.firecrackerBootMode {
+	case "rootfs":
+		required["firecracker rootfs"] = a.firecrackerRootFS
+	case "initramfs":
+		required["firecracker initramfs"] = a.firecrackerInitrd
+	default:
+		return fmt.Errorf("unsupported FIRECRACKER_BOOT_MODE %q", a.firecrackerBootMode)
+	}
+	for name, path := range required {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("%s %s is not visible in the node container; build Firecracker assets and mount firecracker-assets: %w", name, path, err)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("%s %s is a directory, want file", name, path)
+		}
+	}
+	return nil
+}
+
 func (a *app) preflightNBDDevices() error {
-	for _, command := range []string{"nbd-client", "mkfs.ext4", "mount", "umount"} {
+	for _, command := range []string{"blockdev", "nbd-client", "mkfs.ext4", "mount", "umount"} {
 		if _, err := exec.LookPath(command); err != nil {
 			return fmt.Errorf("mounted-fs runtime requires %q in the node image: %w", command, err)
 		}
@@ -492,6 +782,106 @@ func (a *app) visibleNBDDevices() []string {
 		devices = append(devices, device)
 	}
 	return devices
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+func firecrackerBootArgs(bootMode, mode, payload, dataDevice string) string {
+	base := fmt.Sprintf(
+		"console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.mode=%s orca.payload_b64=%s orca.data_dev=%s",
+		mode,
+		base64.StdEncoding.EncodeToString([]byte(payload)),
+		dataDevice,
+	)
+	if bootMode == "rootfs" {
+		return "root=/dev/vda rw " + base
+	}
+	return base
+}
+
+func writeFirecrackerConfig(path, kernelPath, rootfsPath, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string) error {
+	bootSource := map[string]any{
+		"kernel_image_path": kernelPath,
+		"boot_args":         bootArgs,
+	}
+	if initrdPath != "" {
+		bootSource["initrd_path"] = initrdPath
+	}
+	drives := []map[string]any{}
+	if rootfsPath != "" {
+		drives = append(drives, map[string]any{
+			"drive_id":       "rootfs",
+			"path_on_host":   rootfsPath,
+			"is_root_device": true,
+			"is_read_only":   false,
+		})
+	}
+	drives = append(drives, map[string]any{
+		"drive_id":       "orca",
+		"path_on_host":   dataDevice,
+		"is_root_device": false,
+		"is_read_only":   dataReadOnly,
+	})
+	cfg := map[string]any{
+		"boot-source": bootSource,
+		"drives":      drives,
+		"machine-config": map[string]any{
+			"vcpu_count":        1,
+			"mem_size_mib":      128,
+			"track_dirty_pages": false,
+		},
+		"logger": map[string]any{
+			"log_path":        logPath,
+			"level":           "Info",
+			"show_level":      true,
+			"show_log_origin": true,
+		},
+	}
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o644)
+}
+
+func orcaInitLines(s string) string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, "orca-init:") {
+			lines = append(lines, strings.TrimSpace(line))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func timingsJSON(timings []firecrackerStepTiming) string {
+	raw, err := json.Marshal(timings)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+func tail(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[len(s)-max:]
 }
 
 func localNBDClientTarget(listenAddr string) (string, string) {

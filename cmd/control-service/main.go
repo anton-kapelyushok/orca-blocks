@@ -50,7 +50,7 @@ func main() {
 				PublicURL: getenv("NODE_2_PUBLIC_URL", getenv("NODE_2_URL", "http://localhost:8082")),
 			},
 		},
-		client: &http.Client{Timeout: 5 * time.Second},
+		client: &http.Client{Timeout: 60 * time.Second},
 	}
 
 	mux := http.NewServeMux()
@@ -119,6 +119,9 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
 		Format             bool   `json:"format"`
 		FSType             string `json:"fs_type"`
+		FirecrackerMode    string `json:"firecracker_mode"`
+		FirecrackerPayload string `json:"firecracker_payload"`
+		CommitAfterRun     *bool  `json:"commit_after_run"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -149,6 +152,15 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.FSType != "" {
 		startReq["fs_type"] = req.FSType
+	}
+	if req.FirecrackerMode != "" {
+		startReq["firecracker_mode"] = req.FirecrackerMode
+	}
+	if req.FirecrackerPayload != "" {
+		startReq["firecracker_payload"] = req.FirecrackerPayload
+	}
+	if req.CommitAfterRun != nil {
+		startReq["commit_after_run"] = *req.CommitAfterRun
 	}
 	body, _ := json.Marshal(startReq)
 	resp, err := a.client.Post(selected.URL+"/sessions/start", "application/json", bytes.NewReader(body))

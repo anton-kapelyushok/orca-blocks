@@ -5,6 +5,7 @@ ASSET_DIR=${ASSET_DIR:-firecracker-assets}
 MODE=${MODE:-smoke}
 PAYLOAD=${PAYLOAD:-hello-from-firecracker}
 TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-20}
+FIRECRACKER_BOOT_MODE=${FIRECRACKER_BOOT_MODE:-initramfs}
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -14,11 +15,22 @@ ASSET_DIR=$(cd "$ASSET_DIR" && pwd)
 FIRECRACKER_BIN=${FIRECRACKER_BIN:-$ASSET_DIR/firecracker}
 KERNEL_IMAGE=${KERNEL_IMAGE:-$ASSET_DIR/vmlinux}
 ROOTFS_IMAGE=${ROOTFS_IMAGE:-$ASSET_DIR/rootfs.ext4}
+INITRD_IMAGE=${INITRD_IMAGE:-$ASSET_DIR/initramfs.cpio.gz}
 
-for path in "$FIRECRACKER_BIN" "$KERNEL_IMAGE" "$ROOTFS_IMAGE"; do
+required=("$FIRECRACKER_BIN" "$KERNEL_IMAGE")
+case "$FIRECRACKER_BOOT_MODE" in
+  rootfs) required+=("$ROOTFS_IMAGE") ;;
+  initramfs) required+=("$INITRD_IMAGE") ;;
+  *)
+    echo "unsupported FIRECRACKER_BOOT_MODE=$FIRECRACKER_BOOT_MODE" >&2
+    exit 2
+    ;;
+esac
+
+for path in "${required[@]}"; do
   if [[ ! -e "$path" ]]; then
     echo "missing required Firecracker asset: $path" >&2
-    echo "run make firecracker-assets and make firecracker-rootfs first" >&2
+    echo "run make firecracker-assets and make firecracker-initramfs/rootfs first" >&2
     exit 2
   fi
 done
@@ -43,22 +55,30 @@ CONFIG="$WORK_DIR/firecracker.json"
 SERIAL_LOG="$WORK_DIR/serial.log"
 FC_LOG="$WORK_DIR/firecracker.log"
 
-BOOT_ARGS="console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw init=/init orca.mode=${MODE} orca.payload=${PAYLOAD}"
+BOOT_ARGS="console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.mode=${MODE} orca.payload=${PAYLOAD}"
+DRIVES_JSON="[]"
+INITRD_JSON=""
+if [[ "$FIRECRACKER_BOOT_MODE" == "rootfs" ]]; then
+  BOOT_ARGS="root=/dev/vda rw $BOOT_ARGS"
+  DRIVES_JSON='[
+    {
+      "drive_id": "rootfs",
+      "path_on_host": "'"$ROOTFS_IMAGE"'",
+      "is_root_device": true,
+      "is_read_only": false
+    }
+  ]'
+else
+  INITRD_JSON=', "initrd_path": "'"$INITRD_IMAGE"'"'
+fi
 
 cat >"$CONFIG" <<EOF
 {
   "boot-source": {
     "kernel_image_path": "$KERNEL_IMAGE",
-    "boot_args": "$BOOT_ARGS"
+    "boot_args": "$BOOT_ARGS"$INITRD_JSON
   },
-  "drives": [
-    {
-      "drive_id": "rootfs",
-      "path_on_host": "$ROOTFS_IMAGE",
-      "is_root_device": true,
-      "is_read_only": false
-    }
-  ],
+  "drives": $DRIVES_JSON,
   "machine-config": {
     "vcpu_count": 1,
     "mem_size_mib": 128,
@@ -73,7 +93,7 @@ cat >"$CONFIG" <<EOF
 }
 EOF
 
-log "booting Firecracker rootfs smoke test"
+log "booting Firecracker $FIRECRACKER_BOOT_MODE smoke test"
 "$FIRECRACKER_BIN" --api-sock "$SOCKET" --config-file "$CONFIG" >"$SERIAL_LOG" 2>>"$FC_LOG" &
 FC_PID=$!
 
@@ -106,4 +126,4 @@ if ! grep -q "orca-init: ${MODE} ok" "$SERIAL_LOG"; then
   exit 1
 fi
 
-log "Firecracker rootfs boot check passed"
+log "Firecracker $FIRECRACKER_BOOT_MODE boot check passed"

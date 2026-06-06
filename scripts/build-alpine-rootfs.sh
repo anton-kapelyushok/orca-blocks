@@ -69,6 +69,10 @@ sudo mount -o loop "$ROOTFS_PATH" "$MOUNT_DIR"
 log "extracting Alpine"
 sudo tar -xzf "$TARBALL" -C "$MOUNT_DIR"
 
+log "installing guest packages"
+sudo cp /etc/resolv.conf "$MOUNT_DIR/etc/resolv.conf"
+sudo chroot "$MOUNT_DIR" /sbin/apk add --no-cache e2fsprogs
+
 log "installing Orca guest init"
 sudo mkdir -p "$MOUNT_DIR"/{dev,proc,sys,mnt/orca}
 sudo tee "$MOUNT_DIR/init" >/dev/null <<'INIT'
@@ -95,7 +99,11 @@ mount -t devtmpfs devtmpfs /dev || true
 
 MODE="$(cmdline_value orca.mode || echo smoke)"
 PAYLOAD="$(cmdline_value orca.payload || echo hello-from-firecracker)"
+PAYLOAD_B64="$(cmdline_value orca.payload_b64 || true)"
 DATA_DEV="$(cmdline_value orca.data_dev || echo /dev/vdb)"
+if [ -n "$PAYLOAD_B64" ]; then
+  PAYLOAD="$(printf '%s' "$PAYLOAD_B64" | base64 -d)"
+fi
 
 log "started mode=$MODE data_dev=$DATA_DEV"
 
@@ -115,8 +123,15 @@ case "$MODE" in
     ;;
   read)
     mkdir -p /mnt/orca
-    mount "$DATA_DEV" /mnt/orca
-    log "proof=$(cat /mnt/orca/proof.txt)"
+    mount -o ro "$DATA_DEV" /mnt/orca
+    ACTUAL="$(cat /mnt/orca/proof.txt)"
+    if [ "$ACTUAL" != "$PAYLOAD" ]; then
+      log "proof mismatch expected_len=${#PAYLOAD} actual_len=${#ACTUAL}"
+      umount /mnt/orca
+      reboot -f
+      exit 3
+    fi
+    log "proof ok"
     umount /mnt/orca
     log "read ok"
     ;;

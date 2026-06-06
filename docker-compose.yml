@@ -41,19 +41,27 @@ services:
 
   toxiproxy-init:
     image: curlimages/curl:8.16.0
+    environment:
+      TOXIPROXY_S3_TOXICS_ENABLED: ${TOXIPROXY_S3_TOXICS_ENABLED:-true}
+      TOXIPROXY_S3_LATENCY_MS: ${TOXIPROXY_S3_LATENCY_MS:-20}
+      TOXIPROXY_S3_BANDWIDTH_KBPS: ${TOXIPROXY_S3_BANDWIDTH_KBPS:-1250}
     depends_on:
       toxiproxy:
         condition: service_started
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
+    entrypoint: |
+      /bin/sh -c '
       until curl -fsS http://toxiproxy:8474/proxies >/dev/null; do sleep 1; done &&
       curl -sS -X DELETE http://toxiproxy:8474/proxies/minio-s3 >/dev/null || true &&
-      curl -fsS -X POST http://toxiproxy:8474/proxies -H 'content-type: application/json' -d '{\"name\":\"minio-s3\",\"listen\":\"0.0.0.0:9000\",\"upstream\":\"minio:9000\"}' &&
-      curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H 'content-type: application/json' -d '{\"name\":\"minio-downstream-latency\",\"type\":\"latency\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"latency\":20,\"jitter\":0}}' &&
-      curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H 'content-type: application/json' -d '{\"name\":\"minio-downstream-bandwidth\",\"type\":\"bandwidth\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"rate\":1250}}'
-      "
+      curl -fsS -X POST http://toxiproxy:8474/proxies -H "content-type: application/json" -d "{\"name\":\"minio-s3\",\"listen\":\"0.0.0.0:9000\",\"upstream\":\"minio:9000\"}" &&
+      if [ "${TOXIPROXY_S3_TOXICS_ENABLED:-true}" = "true" ]; then
+        curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H "content-type: application/json" -d "{\"name\":\"minio-downstream-latency\",\"type\":\"latency\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"latency\":${TOXIPROXY_S3_LATENCY_MS:-20},\"jitter\":0}}" &&
+        curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H "content-type: application/json" -d "{\"name\":\"minio-downstream-bandwidth\",\"type\":\"bandwidth\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"rate\":${TOXIPROXY_S3_BANDWIDTH_KBPS:-1250}}}";
+      else
+        echo "MinIO toxiproxy toxics disabled";
+      fi
+      '
 
   minio-init:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
@@ -113,6 +121,13 @@ services:
       REQUIRE_NBD_DEVICES: "true"
       KVM_DEVICE: /dev/kvm
       REQUIRE_KVM: "false"
+      FIRECRACKER_BIN: /firecracker-assets/firecracker
+      FIRECRACKER_KERNEL: /firecracker-assets/vmlinux
+      FIRECRACKER_ROOTFS: /firecracker-assets/rootfs.ext4
+      FIRECRACKER_INITRD: /firecracker-assets/initramfs.cpio.gz
+      FIRECRACKER_BOOT_MODE: ${FIRECRACKER_BOOT_MODE:-initramfs}
+      FIRECRACKER_WORK_DIR: /sessions/firecracker
+      FIRECRACKER_TIMEOUT_SECONDS: "45"
     ports:
       - "18081:8080"
       - "11081:10809"
@@ -121,6 +136,8 @@ services:
     privileged: true
     volumes:
       - node-1-cache:/cache
+      - node-1-sessions:/sessions
+      - ./firecracker-assets:/firecracker-assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -161,6 +178,13 @@ services:
       REQUIRE_NBD_DEVICES: "true"
       KVM_DEVICE: /dev/kvm
       REQUIRE_KVM: "false"
+      FIRECRACKER_BIN: /firecracker-assets/firecracker
+      FIRECRACKER_KERNEL: /firecracker-assets/vmlinux
+      FIRECRACKER_ROOTFS: /firecracker-assets/rootfs.ext4
+      FIRECRACKER_INITRD: /firecracker-assets/initramfs.cpio.gz
+      FIRECRACKER_BOOT_MODE: ${FIRECRACKER_BOOT_MODE:-initramfs}
+      FIRECRACKER_WORK_DIR: /sessions/firecracker
+      FIRECRACKER_TIMEOUT_SECONDS: "45"
     ports:
       - "18082:8080"
       - "11082:10809"
@@ -169,6 +193,8 @@ services:
     privileged: true
     volumes:
       - node-2-cache:/cache
+      - node-2-sessions:/sessions
+      - ./firecracker-assets:/firecracker-assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -189,3 +215,5 @@ volumes:
   minio-data:
   node-1-cache:
   node-2-cache:
+  node-1-sessions:
+  node-2-sessions:

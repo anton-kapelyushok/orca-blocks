@@ -1,4 +1,4 @@
-.PHONY: up down test unit integration demo firecracker-assets firecracker-rootfs firecracker-boot-check logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-firecracker-assets remote-firecracker-rootfs remote-firecracker-boot-check remote-logs remote-down remote-clean
+.PHONY: up down test unit integration demo firecracker-assets firecracker-rootfs firecracker-initramfs firecracker-boot-check logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-firecracker-assets remote-firecracker-rootfs remote-firecracker-initramfs remote-firecracker-boot-check remote-logs remote-down remote-clean
 
 GO_CACHE_DIR ?= $(CURDIR)/.gocache
 REMOTE_HOST ?=
@@ -20,6 +20,8 @@ REMOTE_RSYNC_OPTS ?= -az --delete \
 	--exclude firecracker-assets \
 	--exclude node_modules \
 	--exclude vendor
+FORCE ?= false
+FIRECRACKER_BOOT_MODE ?= initramfs
 
 up:
 	docker compose up --build -d
@@ -41,13 +43,16 @@ demo:
 	./scripts/demo.sh
 
 firecracker-rootfs:
-	./scripts/build-alpine-rootfs.sh
+	FORCE=$(FORCE) ./scripts/build-alpine-rootfs.sh
+
+firecracker-initramfs:
+	FORCE=$(FORCE) ./scripts/build-initramfs.sh
 
 firecracker-assets:
 	./scripts/download-firecracker-assets.sh
 
 firecracker-boot-check:
-	./scripts/check-firecracker-boot.sh
+	FIRECRACKER_BOOT_MODE=$(FIRECRACKER_BOOT_MODE) ./scripts/check-firecracker-boot.sh
 
 logs:
 	docker compose logs -f --tail=200
@@ -89,13 +94,16 @@ remote-demo: remote-sync
 	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make demo'
 
 remote-firecracker-rootfs: remote-sync
-	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-rootfs'
+	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && FORCE=$(FORCE) make firecracker-rootfs'
+
+remote-firecracker-initramfs: remote-sync
+	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && FORCE=$(FORCE) make firecracker-initramfs'
 
 remote-firecracker-assets: remote-sync
 	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-assets'
 
 remote-firecracker-boot-check: remote-sync
-	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && make firecracker-boot-check'
+	$(REMOTE_SSH) $(REMOTE_TTY_SSH_OPTS) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && FIRECRACKER_BOOT_MODE=$(FIRECRACKER_BOOT_MODE) make firecracker-boot-check'
 
 remote-logs:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-logs REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)

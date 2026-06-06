@@ -2,7 +2,7 @@
 
 This repository contains a local Docker Compose prototype for the hard storage path of a remote-execution block backend. It emulates two execution nodes with independent persistent local caches, MinIO as durable S3-compatible chunk storage, and Postgres metadata for volumes, snapshots, and scheduling hints.
 
-Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. The current runtimes are thin test/debug surfaces over the storage package. NBD is an internal device implementation for the mounted filesystem runtime and a low-level protocol test path.
+ublk, auth, encryption, Kubernetes, and advanced prefetch are intentionally out of scope. Firecracker is present as an MVP runtime for proving the lazy block path, not yet as a production VM product. The current runtimes are thin test/debug surfaces over the storage package. NBD is an internal device implementation for the mounted filesystem and Firecracker runtimes, plus a low-level protocol test path.
 
 ## Architecture
 
@@ -66,29 +66,46 @@ REMOTE_RSYNC_SSH_OPTS="-p 2222"
 
 `runtime:"mounted-fs"` is the pre-Firecracker integration harness. Session start happens on the selected node, registers a session-local NBD export, attaches it to a free `/dev/nbdX` inside that node container, optionally formats it, and mounts it under `/mnt/orca-sessions/{session_id}`. The response includes `mount_path` and `nbd_device`. `POST /sessions/{id}/commit` unmounts, disconnects the NBD device, commits dirty chunks to a new snapshot, and releases the device. `POST /sessions/{id}/stop` unmounts and disconnects without committing.
 
-NBD devices are host kernel devices, not image-local devices. `remote-setup` loads the host `nbd` module and configures `/dev/nbd0..15` on boot. The node containers run privileged so they can see those devices and perform test mounts. Compose gives each node a disjoint allocation range: node-1 uses `/dev/nbd0..7`, and node-2 uses `/dev/nbd8..15`. At startup, each node preflights `nbd-client`, `mkfs.ext4`, `mount`, `umount`, and visible NBD devices in its assigned range; if the host module or container device access is missing, the node fails with a direct setup error instead of a later opaque mount failure. Nodes also check `/dev/kvm` visibility and log a warning today; this becomes required when `runtime:"firecracker"` is added.
+NBD devices are host kernel devices, not image-local devices. `remote-setup` loads the host `nbd` module and configures `/dev/nbd0..15` on boot. The node containers run privileged so they can see those devices and perform test mounts. Compose gives each node a disjoint allocation range: node-1 uses `/dev/nbd0..7`, and node-2 uses `/dev/nbd8..15`. At startup, each node preflights `nbd-client`, `mkfs.ext4`, `mount`, `umount`, and visible NBD devices in its assigned range; if the host module or container device access is missing, the node fails with a direct setup error instead of a later opaque mount failure. Nodes also check `/dev/kvm` visibility before running Firecracker sessions.
 
 `runtime:"nbd-export-test"` is a low-level protocol test harness. The node creates a session-local NBD export, but the caller attaches it. This preserves direct NBD coverage while keeping the future product path centered on node-owned device lifecycle.
 
 ## Firecracker Assets
 
-The first Firecracker runtime will boot from a static root filesystem and attach the Orca lazy block volume as a second disk. Build the Alpine-based rootfs on a Linux host with loop-mount support:
+The default Firecracker MVP boots a small initramfs and attaches the Orca lazy block volume as `/dev/vda`. This is intentionally tiny: it proves the VM-to-NBD-to-cache-to-MinIO storage path without paying for a full guest root filesystem on every test run.
 
 ```sh
 make remote-firecracker-assets REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
-make remote-firecracker-rootfs REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-firecracker-initramfs REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
 make remote-firecracker-boot-check REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
 ```
 
-`remote-firecracker-assets` downloads the Firecracker binary and a matching CI kernel into `firecracker-assets/`. The rootfs builder writes `firecracker-assets/rootfs.ext4` by default. It downloads Alpine minirootfs, creates an ext4 image, extracts Alpine, and installs an `/init` script that understands these kernel args:
+`remote-firecracker-assets` downloads the Firecracker binary and a matching CI kernel into `firecracker-assets/`. The initramfs builder writes `firecracker-assets/initramfs.cpio.gz` from BusyBox and installs an `/init` script that understands these kernel args:
 
 ```text
 orca.mode=smoke
-orca.mode=write orca.payload=hello orca.data_dev=/dev/vdb
-orca.mode=read orca.data_dev=/dev/vdb
+orca.mode=write orca.payload_b64=... orca.data_dev=/dev/vda
+orca.mode=read orca.payload_b64=... orca.data_dev=/dev/vda
 ```
 
-The rootfs is only the boot environment. The Orca volume should be attached separately as `/dev/vdb`.
+The old Alpine rootfs path is still available for experiments:
+
+```sh
+make remote-firecracker-rootfs REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+FIRECRACKER_BOOT_MODE=rootfs make remote-firecracker-boot-check REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+```
+
+In rootfs mode, the rootfs is only the boot environment and the Orca volume is attached separately as `/dev/vdb`. In initramfs mode there is no rootfs drive, so the Orca volume is `/dev/vda`.
+
+`runtime:"firecracker"` keeps per-session debug data on the selected node under `/sessions/firecracker/{session_id}`. The retained directory includes `firecracker.json`, `firecracker.log`, `serial.log`, a copied boot artifact, and `timings.json` with step durations for preflight, NBD attach/detach, VM run, flush, and commit. In Compose these directories are backed by per-node persistent volumes, separate from the chunk cache volumes.
+
+Run the focused Firecracker integration test from your Mac against the Linux VM:
+
+```sh
+make remote-sync REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+ssh -p 2222 vboxuser@192.168.178.134 \
+  'cd ~/orca-blocks && FORCE=true make firecracker-initramfs && TOXIPROXY_S3_TOXICS_ENABLED=false docker compose up --build -d node-1 node-2 control-service && GOCACHE=$(pwd)/.gocache go test -count=1 -v -tags=integration ./integration -run TestFirecrackerSessionNodeOneThenNodeTwo'
+```
 
 Example mounted filesystem session:
 

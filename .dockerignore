@@ -1,6 +1,7 @@
 .git
 .gradle
 .gocache
+firecracker-assets
 .idea
 .kotlin
 build

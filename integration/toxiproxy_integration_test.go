@@ -17,6 +17,9 @@ func TestMinIOProxyThrottleStillAllowsColdNodeFetch(t *testing.T) {
 	waitFor(t, control+"/healthz")
 	t.Logf("waiting for toxiproxy API at %s", toxiproxy)
 	waitFor(t, toxiproxy+"/proxies")
+	proxy := getJSON(t, toxiproxy+"/proxies/minio-s3")
+	toxicsEnabled := len(asSlice(proxy["toxics"])) > 0
+	t.Logf("toxiproxy minio-s3 toxics enabled=%v", toxicsEnabled)
 
 	volumeID := fmt.Sprintf("toxiproxy-itest-%d", time.Now().UnixNano())
 	var volume map[string]any
@@ -40,7 +43,7 @@ func TestMinIOProxyThrottleStillAllowsColdNodeFetch(t *testing.T) {
 	t.Log("creating cold session on node-2")
 	start2 := startSession(t, control, volumeID, "node-2")
 
-	t.Log("reading from node-2; expecting local misses, remote fetches, and Compose-configured MinIO throttling")
+	t.Log("reading from node-2; expecting local misses and remote fetches through the MinIO proxy")
 	started := time.Now()
 	got := getRaw(t, fmt.Sprintf("%s/sessions/%s/read?offset=0&length=%d", start2["node_url"], start2["session_id"], len(data)))
 	elapsed := time.Since(started)
@@ -52,7 +55,16 @@ func TestMinIOProxyThrottleStillAllowsColdNodeFetch(t *testing.T) {
 	if asInt(stats["cache_misses"]) <= 0 || asInt(stats["remote_fetches"]) <= 0 {
 		t.Fatalf("expected node-2 cache misses and remote fetches through toxiproxy, got %+v", stats)
 	}
-	if elapsed < 500*time.Millisecond {
+	if toxicsEnabled && elapsed < 500*time.Millisecond {
 		t.Fatalf("expected throttled MinIO read to take at least 500ms, got %s", elapsed)
+	}
+}
+
+func asSlice(v any) []any {
+	switch s := v.(type) {
+	case []any:
+		return s
+	default:
+		return nil
 	}
 }
