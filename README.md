@@ -9,6 +9,7 @@ Firecracker, ublk, auth, encryption, Kubernetes, and advanced prefetch are inten
 - `control-service`: creates volumes and schedules sessions. It tracks `last_node` in Postgres and prefers that node when it is healthy.
 - `node-1` and `node-2`: expose the block backend HTTP API and run a local NBD listener used by node-owned block devices. Each node has its own Docker volume mounted as `/cache`.
 - `minio`: stores immutable chunks under `chunks/{sha256}` and snapshot manifests under `manifests/{snapshot_id}.json`.
+- `toxiproxy`: sits between nodes and MinIO so integration tests can add latency, bandwidth limits, or failures to the S3 path.
 - `postgres`: stores volume metadata, latest snapshot pointers, snapshot records, and last-node hints.
 - `pkg/storage`: reusable storage engine for chunk math, manifests, lazy reads, dirty overlays, commits, local cache lookup/fill, and LRU eviction.
 
@@ -22,7 +23,7 @@ make down
 make clean
 ```
 
-The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), and `19000`/`19001` (MinIO API/console).
+The services are exposed on host ports `18080` (control), `18081` (node-1), `18082` (node-2), `19000` (MinIO API through Toxiproxy), `19001` (MinIO console), `19002` (direct MinIO API for debugging), and `18474` (Toxiproxy control API).
 
 ## Remote Linux/KVM Dev
 

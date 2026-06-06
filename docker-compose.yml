@@ -20,7 +20,7 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "19000:9000"
+      - "19002:9000"
       - "19001:9001"
     volumes:
       - minio-data:/data
@@ -29,6 +29,31 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:latest
+    ports:
+      - "18474:8474"
+      - "19000:9000"
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  toxiproxy-init:
+    image: curlimages/curl:8.16.0
+    depends_on:
+      toxiproxy:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until curl -fsS http://toxiproxy:8474/proxies >/dev/null; do sleep 1; done &&
+      curl -sS -X DELETE http://toxiproxy:8474/proxies/minio-s3 >/dev/null || true &&
+      curl -fsS -X POST http://toxiproxy:8474/proxies -H 'content-type: application/json' -d '{\"name\":\"minio-s3\",\"listen\":\"0.0.0.0:9000\",\"upstream\":\"minio:9000\"}' &&
+      curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H 'content-type: application/json' -d '{\"name\":\"minio-downstream-latency\",\"type\":\"latency\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"latency\":20,\"jitter\":0}}' &&
+      curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H 'content-type: application/json' -d '{\"name\":\"minio-downstream-bandwidth\",\"type\":\"bandwidth\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"rate\":1250}}'
+      "
 
   minio-init:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
@@ -71,7 +96,7 @@ services:
     environment:
       NODE_ID: node-1
       DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://toxiproxy:9000
       S3_REGION: us-east-1
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
@@ -95,6 +120,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      toxiproxy-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
       interval: 2s
@@ -109,7 +136,7 @@ services:
     environment:
       NODE_ID: node-2
       DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://toxiproxy:9000
       S3_REGION: us-east-1
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
@@ -132,6 +159,8 @@ services:
       minio:
         condition: service_healthy
       minio-init:
+        condition: service_completed_successfully
+      toxiproxy-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
