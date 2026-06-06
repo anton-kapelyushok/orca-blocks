@@ -50,7 +50,7 @@ mkdir -p "$WORK_DIR"/{bin,dev,proc,sys,mnt/orca}
 cp "$BUSYBOX" "$WORK_DIR/bin/busybox"
 chmod +x "$WORK_DIR/bin/busybox"
 
-for applet in sh mount umount mkdir cat printf sync reboot base64 mke2fs; do
+for applet in sh mount umount mkdir cat printf sync reboot sleep base64 mke2fs; do
   ln -s busybox "$WORK_DIR/bin/$applet"
 done
 
@@ -82,6 +82,7 @@ MODE="$(cmdline_value orca.mode || echo smoke)"
 PAYLOAD="$(cmdline_value orca.payload || echo hello-from-firecracker)"
 PAYLOAD_B64="$(cmdline_value orca.payload_b64 || true)"
 DATA_DEV="$(cmdline_value orca.data_dev || echo /dev/vda)"
+AFTER_OK="$(cmdline_value orca.after_ok || echo reboot)"
 if [ -n "$PAYLOAD_B64" ]; then
   PAYLOAD="$(printf '%s' "$PAYLOAD_B64" | base64 -d)"
 fi
@@ -122,6 +123,13 @@ case "$MODE" in
     exit 2
     ;;
 esac
+
+if [ "$AFTER_OK" = "wait" ]; then
+  log "waiting for host"
+  while true; do
+    sleep 3600
+  done
+fi
 
 reboot -f
 INIT

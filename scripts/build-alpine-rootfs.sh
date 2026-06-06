@@ -101,6 +101,7 @@ MODE="$(cmdline_value orca.mode || echo smoke)"
 PAYLOAD="$(cmdline_value orca.payload || echo hello-from-firecracker)"
 PAYLOAD_B64="$(cmdline_value orca.payload_b64 || true)"
 DATA_DEV="$(cmdline_value orca.data_dev || echo /dev/vdb)"
+AFTER_OK="$(cmdline_value orca.after_ok || echo reboot)"
 if [ -n "$PAYLOAD_B64" ]; then
   PAYLOAD="$(printf '%s' "$PAYLOAD_B64" | base64 -d)"
 fi
@@ -141,6 +142,13 @@ case "$MODE" in
     exit 2
     ;;
 esac
+
+if [ "$AFTER_OK" = "wait" ]; then
+  log "waiting for host"
+  while true; do
+    sleep 3600
+  done
+fi
 
 reboot -f
 INIT

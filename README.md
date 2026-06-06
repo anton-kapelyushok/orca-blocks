@@ -97,7 +97,7 @@ FIRECRACKER_BOOT_MODE=rootfs make remote-firecracker-boot-check REMOTE_HOST=vbox
 
 In rootfs mode, the rootfs is only the boot environment and the Orca volume is attached separately as `/dev/vdb`. In initramfs mode there is no rootfs drive, so the Orca volume is `/dev/vda`.
 
-`runtime:"firecracker"` keeps per-session debug data on the selected node under `/sessions/firecracker/{session_id}`. The retained directory includes `firecracker.json`, `firecracker.log`, `serial.log`, a copied boot artifact, and `timings.json` with step durations for preflight, NBD attach/detach, VM run, flush, and commit. In Compose these directories are backed by per-node persistent volumes, separate from the chunk cache volumes.
+`runtime:"firecracker"` keeps per-session debug data on the selected node under `/sessions/firecracker/{session_id}`. The retained directory includes `firecracker.json`, `firecracker.log`, `serial.log`, a copied boot artifact, and `timings.json` with step durations for preflight, NBD attach/detach, VM run, flush, and commit. Firecracker write sessions only save node-local `memory.snap` and `vmstate.snap` files when `save_memory_snapshot:true` is requested. The MVP can restore those files on the same node with `firecracker_mode:"restore"` plus the saved memory path, VM state path, and original NBD device path. These memory snapshots are deliberately not uploaded to MinIO yet; durable cross-node truth remains the volume snapshot/chunk manifest path. In Compose these debug directories are backed by per-node persistent volumes, separate from the chunk cache volumes.
 
 Run the focused Firecracker integration test from your Mac against the Linux VM:
 

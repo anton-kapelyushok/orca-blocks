@@ -31,6 +31,9 @@ func TestFirecrackerSessionNodeOneThenNodeTwo(t *testing.T) {
 	t.Logf("node-1 firecracker session=%s output=%q snapshot=%s work_dir=%s", writeSession["session_id"], writeSession["firecracker_output"], writeSession["snapshot_id"], writeSession["firecracker_work_dir"])
 	logFirecrackerTimings(t, "node-1", writeSession)
 	assertFirecrackerSessionData(t, "node-1", writeSession)
+	if writeSession["memory_snapshot_path"] != "" || writeSession["vmstate_snapshot_path"] != "" {
+		t.Fatalf("memory snapshots should be disabled by default, got %+v", writeSession)
+	}
 	if writeSession["snapshot_id"] == "" {
 		t.Fatalf("expected firecracker write session to commit a snapshot: %+v", writeSession)
 	}
@@ -71,6 +74,43 @@ func TestFirecrackerSessionNodeOneThenNodeTwo(t *testing.T) {
 	stopSession(t, readSession)
 }
 
+func TestFirecrackerMemoryRestore(t *testing.T) {
+	control := getenv("CONTROL_URL", "http://localhost:18080")
+	t.Logf("waiting for control service at %s", control)
+	waitFor(t, control+"/healthz")
+
+	volumeID := fmt.Sprintf("fc-memory-itest-%d", time.Now().UnixNano())
+	payload := fmt.Sprintf("firecracker memory restore payload %d", time.Now().UnixNano())
+	t.Logf("creating storage volume %s", volumeID)
+	var volume map[string]any
+	postJSON(t, control+"/volumes/create", map[string]any{
+		"volume_id":  volumeID,
+		"size_bytes": 64 * 1024 * 1024,
+		"chunk_size": 1024 * 1024,
+	}, &volume)
+	t.Logf("created firecracker memory test volume: %+v", volume)
+
+	t.Log("starting firecracker write session on node-1 with memory snapshot explicitly enabled")
+	writeSession := startFirecrackerSessionWithMemorySnapshot(t, control, volumeID, "node-1", "write", payload, true)
+	t.Logf("node-1 firecracker session=%s output=%q snapshot=%s work_dir=%s", writeSession["session_id"], writeSession["firecracker_output"], writeSession["snapshot_id"], writeSession["firecracker_work_dir"])
+	logFirecrackerTimings(t, "node-1 memory write", writeSession)
+	assertFirecrackerSessionData(t, "node-1", writeSession)
+	assertFirecrackerMemorySnapshot(t, "node-1", writeSession)
+	assertTimingPresent(t, "node-1 memory write", writeSession, "create_memory_snapshot")
+	if writeSession["snapshot_id"] == "" {
+		t.Fatalf("expected firecracker write session to commit a snapshot: %+v", writeSession)
+	}
+
+	t.Log("restoring node-1 firecracker memory snapshot")
+	restoreSession := restoreFirecrackerSession(t, control, volumeID, "node-1", writeSession)
+	t.Logf("node-1 restored firecracker session=%s work_dir=%s restored_mem=%s restored_vmstate=%s",
+		restoreSession["session_id"], restoreSession["firecracker_work_dir"], restoreSession["restored_memory_snapshot"], restoreSession["restored_vmstate_snapshot"])
+	logFirecrackerTimings(t, "node-1 memory restore", restoreSession)
+	assertFirecrackerSessionData(t, "node-1", restoreSession)
+	assertTimingPresent(t, "node-1 memory restore", restoreSession, "restore_memory_snapshot")
+	stopSession(t, restoreSession)
+}
+
 func startFirecrackerSession(t *testing.T, control, volumeID, node, mode, payload string, commitAfterRun bool) map[string]string {
 	t.Helper()
 	var out map[string]string
@@ -91,6 +131,48 @@ func startFirecrackerSession(t *testing.T, control, volumeID, node, mode, payloa
 	return out
 }
 
+func startFirecrackerSessionWithMemorySnapshot(t *testing.T, control, volumeID, node, mode, payload string, commitAfterRun bool) map[string]string {
+	t.Helper()
+	var out map[string]string
+	postJSON(t, control+"/sessions/start", map[string]any{
+		"volume_id":            volumeID,
+		"force_node":           node,
+		"runtime":              "firecracker",
+		"firecracker_mode":     mode,
+		"firecracker_payload":  payload,
+		"commit_after_run":     commitAfterRun,
+		"save_memory_snapshot": true,
+	}, &out)
+	if out["session_id"] == "" || out["node_url"] == "" || out["firecracker_output"] == "" {
+		t.Fatalf("missing firecracker session fields: %+v", out)
+	}
+	if out["firecracker_work_dir"] == "" || out["firecracker_timings"] == "" {
+		t.Fatalf("missing firecracker session debug fields: %+v", out)
+	}
+	return out
+}
+
+func restoreFirecrackerSession(t *testing.T, control, volumeID, node string, source map[string]string) map[string]string {
+	t.Helper()
+	var out map[string]string
+	postJSON(t, control+"/sessions/start", map[string]any{
+		"volume_id":                     volumeID,
+		"force_node":                    node,
+		"runtime":                       "firecracker",
+		"firecracker_mode":              "restore",
+		"restore_memory_snapshot_path":  source["memory_snapshot_path"],
+		"restore_vmstate_snapshot_path": source["vmstate_snapshot_path"],
+		"restore_firecracker_device":    source["firecracker_device"],
+	}, &out)
+	if out["session_id"] == "" || out["node_url"] == "" || out["firecracker_work_dir"] == "" || out["firecracker_timings"] == "" {
+		t.Fatalf("missing restored firecracker session fields: %+v", out)
+	}
+	if out["restored_memory_snapshot"] == "" || out["restored_vmstate_snapshot"] == "" {
+		t.Fatalf("missing restored snapshot fields: %+v", out)
+	}
+	return out
+}
+
 func assertFirecrackerRead(t *testing.T, node string, session map[string]string) {
 	t.Helper()
 	t.Logf("%s firecracker session=%s output=%q work_dir=%s", node, session["session_id"], session["firecracker_output"], session["firecracker_work_dir"])
@@ -102,6 +184,27 @@ func assertFirecrackerRead(t *testing.T, node string, session map[string]string)
 	if !strings.Contains(session["firecracker_output"], "orca-init: read ok") {
 		t.Fatalf("firecracker read output did not confirm read: %+v", session)
 	}
+}
+
+func assertTimingPresent(t *testing.T, node string, session map[string]string, name string) {
+	t.Helper()
+	var timings []struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(session["firecracker_timings"]), &timings); err != nil {
+		t.Fatalf("decode firecracker timings for %s: %v body=%s", node, err, session["firecracker_timings"])
+	}
+	for _, timing := range timings {
+		if timing.Name == name {
+			if timing.Status != "ok" {
+				t.Fatalf("expected timing %s for %s to be ok, got %+v", name, node, timing)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected timing %s for %s in %+v", name, node, timings)
 }
 
 func logFirecrackerTimings(t *testing.T, node string, session map[string]string) {
@@ -138,4 +241,15 @@ func assertFirecrackerSessionData(t *testing.T, service string, session map[stri
 	workDir := session["firecracker_work_dir"]
 	t.Logf("checking retained firecracker session data on %s at %s", service, workDir)
 	runComposeExec(t, service, fmt.Sprintf("test -d %s && test -f %s/serial.log && test -f %s/timings.json && test -f %s/firecracker.json", shellQuote(workDir), shellQuote(workDir), shellQuote(workDir), shellQuote(workDir)))
+}
+
+func assertFirecrackerMemorySnapshot(t *testing.T, service string, session map[string]string) {
+	t.Helper()
+	memPath := session["memory_snapshot_path"]
+	statePath := session["vmstate_snapshot_path"]
+	if memPath == "" || statePath == "" {
+		t.Fatalf("expected firecracker memory snapshot fields on write session: %+v", session)
+	}
+	t.Logf("checking retained firecracker memory snapshot on %s: mem=%s vmstate=%s", service, memPath, statePath)
+	runComposeExec(t, service, fmt.Sprintf("test -s %s && test -s %s", shellQuote(memPath), shellQuote(statePath)))
 }

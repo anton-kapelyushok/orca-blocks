@@ -122,6 +122,10 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		FirecrackerMode    string `json:"firecracker_mode"`
 		FirecrackerPayload string `json:"firecracker_payload"`
 		CommitAfterRun     *bool  `json:"commit_after_run"`
+		SaveMemory         bool   `json:"save_memory_snapshot"`
+		RestoreMemory      string `json:"restore_memory_snapshot_path"`
+		RestoreVMState     string `json:"restore_vmstate_snapshot_path"`
+		RestoreDevice      string `json:"restore_firecracker_device"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -161,6 +165,18 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.CommitAfterRun != nil {
 		startReq["commit_after_run"] = *req.CommitAfterRun
+	}
+	if req.SaveMemory {
+		startReq["save_memory_snapshot"] = req.SaveMemory
+	}
+	if req.RestoreMemory != "" {
+		startReq["restore_memory_snapshot_path"] = req.RestoreMemory
+	}
+	if req.RestoreVMState != "" {
+		startReq["restore_vmstate_snapshot_path"] = req.RestoreVMState
+	}
+	if req.RestoreDevice != "" {
+		startReq["restore_firecracker_device"] = req.RestoreDevice
 	}
 	body, _ := json.Marshal(startReq)
 	resp, err := a.client.Post(selected.URL+"/sessions/start", "application/json", bytes.NewReader(body))
