@@ -78,6 +78,7 @@ services:
     build:
       context: .
       args:
+        TARGET_CMD: control-service
         TARGET: ./cmd/control-service
     environment:
       DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
@@ -100,6 +101,7 @@ services:
     build:
       context: .
       args:
+        TARGET_CMD: node-service
         TARGET: ./cmd/node-service
     environment:
       NODE_ID: node-1
@@ -157,6 +159,7 @@ services:
     build:
       context: .
       args:
+        TARGET_CMD: node-service
         TARGET: ./cmd/node-service
     environment:
       NODE_ID: node-2

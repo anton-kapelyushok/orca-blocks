@@ -483,7 +483,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	if mode == "" {
 		mode = "smoke"
 	}
-	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" {
+	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" && mode != "docker-smoke" && mode != "docker-read" {
 		return nil, fmt.Errorf("unsupported firecracker_mode %q", mode)
 	}
 	if mode == "restore" && (req.RestoreMemory == "" || req.RestoreVMState == "" || req.RestoreDevice == "") {
@@ -493,7 +493,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	if payload == "" {
 		payload = "hello-from-firecracker"
 	}
-	commitAfterRun := mode == "write"
+	commitAfterRun := firecrackerModeWritesVolume(mode)
 	if req.CommitAfterRun != nil {
 		commitAfterRun = *req.CommitAfterRun
 	}
@@ -560,22 +560,26 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	switch firecrackerBootMode {
 	case "rootfs":
 		guestDataDevice = "/dev/vdb"
-		started = time.Now()
-		if err := copyFile(a.firecrackerRootFS, rootfsCopy); err != nil {
-			record("copy_rootfs", started, err)
-			return nil, fmt.Errorf("copy firecracker rootfs: %w", err)
+		if mode != "restore" {
+			started = time.Now()
+			if err := copyFile(a.firecrackerRootFS, rootfsCopy); err != nil {
+				record("copy_rootfs", started, err)
+				return nil, fmt.Errorf("copy firecracker rootfs: %w", err)
+			}
+			record("copy_rootfs", started, nil)
+			rootfsPath = rootfsCopy
 		}
-		record("copy_rootfs", started, nil)
-		rootfsPath = rootfsCopy
 	case "initramfs":
 		guestDataDevice = "/dev/vda"
-		started = time.Now()
-		if err := copyFile(a.firecrackerInitrd, initrdCopy); err != nil {
-			record("copy_initramfs", started, err)
-			return nil, fmt.Errorf("copy firecracker initramfs: %w", err)
+		if mode != "restore" {
+			started = time.Now()
+			if err := copyFile(a.firecrackerInitrd, initrdCopy); err != nil {
+				record("copy_initramfs", started, err)
+				return nil, fmt.Errorf("copy firecracker initramfs: %w", err)
+			}
+			record("copy_initramfs", started, nil)
+			initrdPath = initrdCopy
 		}
-		record("copy_initramfs", started, nil)
-		initrdPath = initrdCopy
 	default:
 		return nil, fmt.Errorf("unsupported FIRECRACKER_BOOT_MODE %q", firecrackerBootMode)
 	}
@@ -662,7 +666,16 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		return nil, fmt.Errorf("firecracker failed after guest success: %w: %s", err, tail(serial, 4096))
 	}
 	serial := run.output()
-	if mode == "write" {
+	if rootfsPath != "" {
+		started = time.Now()
+		if err := os.Remove(rootfsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			record("remove_rootfs_copy", started, err)
+			return nil, err
+		}
+		record("remove_rootfs_copy", started, nil)
+		rootfsPath = ""
+	}
+	if firecrackerModeWritesVolume(mode) {
 		started = time.Now()
 		if err := runCommand("sync"); err != nil {
 			record("sync_host", started, err)
@@ -706,6 +719,10 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		resp["firecracker_timings"] = timingsJSON(timings)
 	}
 	return resp, nil
+}
+
+func firecrackerModeWritesVolume(mode string) bool {
+	return mode == "write" || mode == "docker-smoke"
 }
 
 func (a *app) detachMountedSession(sessionID string) error {

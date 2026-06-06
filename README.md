@@ -95,7 +95,16 @@ make remote-firecracker-rootfs REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=
 FIRECRACKER_BOOT_MODE=rootfs make remote-firecracker-boot-check REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
 ```
 
-In rootfs mode, the rootfs is only the boot environment and the Orca volume is attached separately as `/dev/vdb`. In initramfs mode there is no rootfs drive, so the Orca volume is `/dev/vda`.
+In rootfs mode, the rootfs is the boot environment and the Orca volume is attached separately as `/dev/vdb`. The rootfs builder installs a VM-local Docker daemon and seeds an offline Alpine container image so `firecracker_mode:"docker-smoke"` and `firecracker_mode:"docker-read"` can run containers without guest networking or registry pulls. `docker-smoke` formats the Orca volume and writes `proof.txt` from inside a container; `docker-read` reconnects a Docker-capable VM and verifies the same file from inside a container. In initramfs mode there is no rootfs drive, so the Orca volume is `/dev/vda`.
+
+Run the Docker-in-Firecracker smoke test from your Mac against the Linux VM:
+
+```sh
+make remote-firecracker-rootfs FORCE=true REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+make remote-firecracker-docker-test REMOTE_HOST=vboxuser@192.168.178.134 REMOTE_PORT=2222
+```
+
+`firecracker-rootfs` caches a Docker-installed Alpine base image under `firecracker-assets/rootfs-base-*.ext4`; `FORCE=true` regenerates only the final rootfs from that cache. Use `REBUILD_BASE=true` when Alpine packages, rootfs size, or the offline image seed should be rebuilt. `remote-firecracker-docker-test` starts existing Compose images by default; add `COMPOSE_BUILD=true` when node/control service code changed.
 
 `runtime:"firecracker"` keeps per-session debug data on the selected node under `/sessions/firecracker/{session_id}`. The retained directory includes `firecracker.json`, `firecracker.log`, `serial.log`, a copied boot artifact, and `timings.json` with step durations for preflight, NBD attach/detach, VM run, flush, and commit. Firecracker write sessions only save node-local `memory.snap` and `vmstate.snap` files when `save_memory_snapshot:true` is requested. The MVP can restore those files on the same node with `firecracker_mode:"restore"` plus the saved memory path, VM state path, and original NBD device path. These memory snapshots are deliberately not uploaded to MinIO yet; durable cross-node truth remains the volume snapshot/chunk manifest path. In Compose these debug directories are backed by per-node persistent volumes, separate from the chunk cache volumes.
 

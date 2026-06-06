@@ -111,6 +111,73 @@ func TestFirecrackerMemoryRestore(t *testing.T) {
 	stopSession(t, restoreSession)
 }
 
+func TestFirecrackerDockerSmoke(t *testing.T) {
+	if getenv("FIRECRACKER_DOCKER_TEST", "") != "true" {
+		t.Skip("set FIRECRACKER_DOCKER_TEST=true and run Compose with FIRECRACKER_BOOT_MODE=rootfs")
+	}
+	if getenv("FIRECRACKER_BOOT_MODE", "") != "rootfs" {
+		t.Skip("docker-in-guest smoke requires FIRECRACKER_BOOT_MODE=rootfs")
+	}
+
+	control := getenv("CONTROL_URL", "http://localhost:18080")
+	t.Logf("waiting for control service at %s", control)
+	waitFor(t, control+"/healthz")
+
+	volumeID := fmt.Sprintf("fc-docker-itest-%d", time.Now().UnixNano())
+	payload := fmt.Sprintf("docker inside firecracker payload %d", time.Now().UnixNano())
+	t.Logf("creating storage volume %s", volumeID)
+	var volume map[string]any
+	postJSON(t, control+"/volumes/create", map[string]any{
+		"volume_id":  volumeID,
+		"size_bytes": 64 * 1024 * 1024,
+		"chunk_size": 1024 * 1024,
+	}, &volume)
+	t.Logf("created docker firecracker test volume: %+v", volume)
+
+	t.Log("starting firecracker docker-smoke session on node-1")
+	writeSession := startFirecrackerSession(t, control, volumeID, "node-1", "docker-smoke", payload, true)
+	t.Logf("node-1 docker firecracker session=%s output=%q snapshot=%s work_dir=%s", writeSession["session_id"], writeSession["firecracker_output"], writeSession["snapshot_id"], writeSession["firecracker_work_dir"])
+	logFirecrackerTimings(t, "node-1 docker-smoke", writeSession)
+	assertFirecrackerSessionData(t, "node-1", writeSession)
+	if writeSession["firecracker_boot_mode"] != "rootfs" {
+		t.Fatalf("expected rootfs boot mode for docker smoke, got %+v", writeSession)
+	}
+	if writeSession["snapshot_id"] == "" {
+		t.Fatalf("expected docker-smoke session to commit a snapshot: %+v", writeSession)
+	}
+	if !strings.Contains(writeSession["firecracker_output"], "orca-init: dockerd ready") {
+		t.Fatalf("firecracker docker output did not confirm dockerd readiness: %+v", writeSession)
+	}
+	if !strings.Contains(writeSession["firecracker_output"], "orca-init: docker container ok") {
+		t.Fatalf("firecracker docker output did not confirm container execution: %+v", writeSession)
+	}
+	if !strings.Contains(writeSession["firecracker_output"], "orca-init: docker-smoke ok") {
+		t.Fatalf("firecracker docker output did not confirm docker-smoke completion: %+v", writeSession)
+	}
+
+	t.Log("starting firecracker docker-read session on node-1 to verify Docker-written data inside a container")
+	readSession := startFirecrackerSession(t, control, volumeID, "node-1", "docker-read", payload, false)
+	assertFirecrackerDockerRead(t, "node-1", readSession)
+	stats := getJSON(t, fmt.Sprintf("%s/sessions/%s/stats", readSession["node_url"], readSession["session_id"]))
+	t.Logf("docker proof node-1 got hits=%v misses=%v remote_fetches=%v zero_fills=%v dirty_chunks=%v",
+		stats["cache_hits"], stats["cache_misses"], stats["remote_fetches"], stats["zero_fills"], stats["dirty_chunks"])
+	if asInt(stats["cache_hits"]) <= 0 {
+		t.Fatalf("expected docker proof node-1 cache hits, got %+v", stats)
+	}
+	stopSession(t, readSession)
+
+	t.Log("starting firecracker docker-read session on node-2 to verify Docker-written data after remote fetch")
+	readNode2 := startFirecrackerSession(t, control, volumeID, "node-2", "docker-read", payload, false)
+	assertFirecrackerDockerRead(t, "node-2", readNode2)
+	stats2 := getJSON(t, fmt.Sprintf("%s/sessions/%s/stats", readNode2["node_url"], readNode2["session_id"]))
+	t.Logf("docker proof node-2 got hits=%v misses=%v remote_fetches=%v zero_fills=%v dirty_chunks=%v",
+		stats2["cache_hits"], stats2["cache_misses"], stats2["remote_fetches"], stats2["zero_fills"], stats2["dirty_chunks"])
+	if asInt(stats2["cache_misses"]) <= 0 || asInt(stats2["remote_fetches"]) <= 0 {
+		t.Fatalf("expected docker proof node-2 cache misses and remote fetches, got %+v", stats2)
+	}
+	stopSession(t, readNode2)
+}
+
 func startFirecrackerSession(t *testing.T, control, volumeID, node, mode, payload string, commitAfterRun bool) map[string]string {
 	t.Helper()
 	var out map[string]string
@@ -183,6 +250,22 @@ func assertFirecrackerRead(t *testing.T, node string, session map[string]string)
 	}
 	if !strings.Contains(session["firecracker_output"], "orca-init: read ok") {
 		t.Fatalf("firecracker read output did not confirm read: %+v", session)
+	}
+}
+
+func assertFirecrackerDockerRead(t *testing.T, node string, session map[string]string) {
+	t.Helper()
+	t.Logf("%s firecracker session=%s output=%q work_dir=%s", node, session["session_id"], session["firecracker_output"], session["firecracker_work_dir"])
+	logFirecrackerTimings(t, node, session)
+	assertFirecrackerSessionData(t, node, session)
+	if !strings.Contains(session["firecracker_output"], "orca-init: dockerd ready") {
+		t.Fatalf("firecracker docker read output did not confirm dockerd readiness: %+v", session)
+	}
+	if !strings.Contains(session["firecracker_output"], "orca-init: docker container ok") {
+		t.Fatalf("firecracker docker read output did not confirm container execution: %+v", session)
+	}
+	if !strings.Contains(session["firecracker_output"], "orca-init: docker-read ok") {
+		t.Fatalf("firecracker docker read output did not confirm read: %+v", session)
 	}
 }
 
