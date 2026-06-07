@@ -28,6 +28,47 @@ type app struct {
 	defaultRootFSMB  int64
 }
 
+type buildTiming struct {
+	Name       string `json:"name"`
+	StartedAt  string `json:"started_at"`
+	DurationMS int64  `json:"duration_ms"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+}
+
+type buildLogger struct {
+	image   string
+	started time.Time
+	steps   []buildTiming
+}
+
+func newBuildLogger(image string) *buildLogger {
+	b := &buildLogger{image: image, started: time.Now()}
+	log.Printf("buildImage image=%s starting", image)
+	return b
+}
+
+func (b *buildLogger) step(name string, fn func() error) error {
+	started := time.Now()
+	log.Printf("buildImage image=%s step=%s starting", b.image, name)
+	err := fn()
+	timing := buildTiming{
+		Name:       name,
+		StartedAt:  started.UTC().Format(time.RFC3339Nano),
+		DurationMS: time.Since(started).Milliseconds(),
+		Status:     "ok",
+	}
+	if err != nil {
+		timing.Status = "error"
+		timing.Error = err.Error()
+		log.Printf("buildImage image=%s step=%s error duration_ms=%d err=%v", b.image, name, timing.DurationMS, err)
+	} else {
+		log.Printf("buildImage image=%s step=%s ok duration_ms=%d", b.image, name, timing.DurationMS)
+	}
+	b.steps = append(b.steps, timing)
+	return err
+}
+
 func main() {
 	ctx := context.Background()
 	repo, err := storage.NewPostgresRepo(ctx, mustenv("DATABASE_URL"))
@@ -86,8 +127,8 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		req.RootFSSizeMB = a.defaultRootFSMB
 	}
 
-	started := time.Now()
-	result, err := a.materializeImage(r.Context(), req.Image, req.RootFSSizeMB)
+	build := newBuildLogger(req.Image)
+	result, err := a.materializeImage(r.Context(), req.Image, req.RootFSSizeMB, build)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -108,28 +149,42 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 
 	baseImageID := "base-" + uuid.NewString()
 	volumeID := "base-vol-" + uuid.NewString()
-	volume, err := a.backend.CreateVolume(r.Context(), volumeID, info.Size(), req.ChunkSize)
-	if err != nil {
+	var volume storage.Volume
+	if err := build.step("create_volume", func() error {
+		var err error
+		volume, err = a.backend.CreateVolume(r.Context(), volumeID, info.Size(), req.ChunkSize)
+		return err
+	}); err != nil {
 		writeError(w, err)
 		return
 	}
-	snapshot, err := a.importFile(r.Context(), volume, file)
-	if err != nil {
+	var snapshot storage.Snapshot
+	if err := build.step("import_rootfs_snapshot", func() error {
+		var err error
+		snapshot, err = a.importFile(r.Context(), volume, file)
+		return err
+	}); err != nil {
 		writeError(w, err)
 		return
 	}
-	baseImage, err := a.repo.CreateBaseImage(r.Context(), storage.BaseImage{
-		BaseImageID:     baseImageID,
-		ImageRef:        req.Image,
-		ImageDigest:     result.digest,
-		VolumeID:        volume.VolumeID,
-		SnapshotID:      snapshot.SnapshotID,
-		RootFSSizeBytes: info.Size(),
-	})
-	if err != nil {
+	var baseImage storage.BaseImage
+	if err := build.step("record_base_image", func() error {
+		var err error
+		baseImage, err = a.repo.CreateBaseImage(r.Context(), storage.BaseImage{
+			BaseImageID:     baseImageID,
+			ImageRef:        req.Image,
+			ImageDigest:     result.digest,
+			VolumeID:        volume.VolumeID,
+			SnapshotID:      snapshot.SnapshotID,
+			RootFSSizeBytes: info.Size(),
+		})
+		return err
+	}); err != nil {
 		writeError(w, err)
 		return
 	}
+	totalMS := time.Since(build.started).Milliseconds()
+	log.Printf("buildImage image=%s complete base_image_id=%s volume_id=%s snapshot_id=%s duration_ms=%d", req.Image, baseImage.BaseImageID, baseImage.VolumeID, baseImage.SnapshotID, totalMS)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"base_image_id":     baseImage.BaseImageID,
@@ -138,7 +193,8 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		"volume_id":         baseImage.VolumeID,
 		"snapshot_id":       baseImage.SnapshotID,
 		"rootfs_size_bytes": baseImage.RootFSSizeBytes,
-		"duration_ms":       time.Since(started).Milliseconds(),
+		"duration_ms":       totalMS,
+		"build_timings":     build.steps,
 	})
 }
 
@@ -171,9 +227,13 @@ type materializedImage struct {
 	digest     string
 }
 
-func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB int64) (materializedImage, error) {
-	dir, err := os.MkdirTemp(a.workDir, "image-build-*")
-	if err != nil {
+func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB int64, build *buildLogger) (materializedImage, error) {
+	var dir string
+	if err := build.step("prepare_workdir", func() error {
+		var err error
+		dir, err = os.MkdirTemp(a.workDir, "image-build-*")
+		return err
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	cleanupOnError := true
@@ -188,20 +248,32 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	rootfsPath := filepath.Join(dir, "rootfs.ext4")
 	mountDir := filepath.Join(dir, "mnt")
 
-	if err := run(ctx, a.containerRuntime, "pull", image); err != nil {
+	if err := build.step("pull_image", func() error {
+		return run(ctx, a.containerRuntime, "pull", image)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	inspect, err := output(ctx, a.containerRuntime, "image", "inspect", image)
-	if err != nil {
+	var inspect []byte
+	if err := build.step("inspect_image", func() error {
+		var err error
+		inspect, err = output(ctx, a.containerRuntime, "image", "inspect", image)
+		return err
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := os.WriteFile(inspectPath, inspect, 0o644); err != nil {
+	if err := build.step("write_image_inspect", func() error {
+		return os.WriteFile(inspectPath, inspect, 0o644)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	digest := imageDigest(inspect)
 
-	cidRaw, err := output(ctx, a.containerRuntime, "create", "--entrypoint", "", image, "true")
-	if err != nil {
+	var cidRaw []byte
+	if err := build.step("create_container", func() error {
+		var err error
+		cidRaw, err = output(ctx, a.containerRuntime, "create", "--entrypoint", "", image, "true")
+		return err
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	cid := strings.TrimSpace(string(cidRaw))
@@ -210,24 +282,36 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 			_ = run(context.Background(), a.containerRuntime, "rm", "-f", cid)
 		}
 	}()
-	if err := runToFile(ctx, rootfsTar, a.containerRuntime, "export", cid); err != nil {
+	if err := build.step("export_rootfs_tar", func() error {
+		return runToFile(ctx, rootfsTar, a.containerRuntime, "export", cid)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := run(ctx, a.containerRuntime, "rm", "-f", cid); err != nil {
+	if err := build.step("remove_container", func() error {
+		return run(ctx, a.containerRuntime, "rm", "-f", cid)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	cid = ""
 
-	if err := truncateFile(rootfsPath, rootFSSizeMB*1024*1024); err != nil {
+	if err := build.step("create_rootfs_file", func() error {
+		return truncateFile(rootfsPath, rootFSSizeMB*1024*1024)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := run(ctx, "mkfs.ext4", "-F", rootfsPath); err != nil {
+	if err := build.step("mkfs_ext4", func() error {
+		return run(ctx, "mkfs.ext4", "-F", rootfsPath)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := os.MkdirAll(mountDir, 0o755); err != nil {
+	if err := build.step("prepare_mount_dir", func() error {
+		return os.MkdirAll(mountDir, 0o755)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := run(ctx, "mount", "-o", "loop", rootfsPath, mountDir); err != nil {
+	if err := build.step("mount_rootfs", func() error {
+		return run(ctx, "mount", "-o", "loop", rootfsPath, mountDir)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	mounted := true
@@ -237,29 +321,46 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 		}
 	}()
 
-	if err := run(ctx, "tar", "--numeric-owner", "-xf", rootfsTar, "-C", mountDir); err != nil {
+	if err := build.step("unpack_rootfs_tar", func() error {
+		return run(ctx, "tar", "--numeric-owner", "-xf", rootfsTar, "-C", mountDir)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	for _, dir := range []string{"dev", "proc", "sys", "run", "tmp", "etc", "orca"} {
-		if err := os.MkdirAll(filepath.Join(mountDir, dir), 0o755); err != nil {
-			return materializedImage{}, err
+	if err := build.step("prepare_guest_dirs", func() error {
+		for _, dir := range []string{"dev", "proc", "sys", "run", "tmp", "etc", "orca"} {
+			if err := os.MkdirAll(filepath.Join(mountDir, dir), 0o755); err != nil {
+				return err
+			}
 		}
-	}
-	if err := copyFile(a.orcaInitPath, filepath.Join(mountDir, "init"), 0o755); err != nil {
+		return nil
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := copyFile(inspectPath, filepath.Join(mountDir, "etc", "orca-image-inspect.json"), 0o644); err != nil {
+	if err := build.step("install_orca_init", func() error {
+		return copyFile(a.orcaInitPath, filepath.Join(mountDir, "init"), 0o755)
+	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := os.WriteFile(filepath.Join(mountDir, "etc", "orca-image-ref"), []byte(image+"\n"), 0o644); err != nil {
+	if err := build.step("write_guest_image_inspect", func() error {
+		return copyFile(inspectPath, filepath.Join(mountDir, "etc", "orca-image-inspect.json"), 0o644)
+	}); err != nil {
+		return materializedImage{}, err
+	}
+	if err := build.step("write_guest_image_ref", func() error {
+		return os.WriteFile(filepath.Join(mountDir, "etc", "orca-image-ref"), []byte(image+"\n"), 0o644)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	meta := fmt.Sprintf("image=%s\nrootfs_size_mb=%d\ncontainer_runtime=%s\n", image, rootFSSizeMB, a.containerRuntime)
-	if err := os.WriteFile(filepath.Join(mountDir, "etc", "orca-rootfs-from-image"), []byte(meta), 0o644); err != nil {
+	if err := build.step("write_guest_rootfs_meta", func() error {
+		return os.WriteFile(filepath.Join(mountDir, "etc", "orca-rootfs-from-image"), []byte(meta), 0o644)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 
-	if err := run(ctx, "umount", mountDir); err != nil {
+	if err := build.step("unmount_rootfs", func() error {
+		return run(ctx, "umount", mountDir)
+	}); err != nil {
 		return materializedImage{}, err
 	}
 	mounted = false
@@ -276,6 +377,9 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 
 	buf := make([]byte, int(volume.ChunkSize))
 	var offset int64
+	var chunks int64
+	lastLog := time.Now()
+	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s starting chunk_size=%d", volume.VolumeID, session.ID, volume.ChunkSize)
 	for {
 		n, readErr := io.ReadFull(file, buf)
 		if readErr != nil && !errors.Is(readErr, io.ErrUnexpectedEOF) && !errors.Is(readErr, io.EOF) {
@@ -286,12 +390,23 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 				return storage.Snapshot{}, err
 			}
 			offset += int64(n)
+			chunks++
+			if chunks%16 == 0 || time.Since(lastLog) > 2*time.Second {
+				log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s progress chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
+				lastLog = time.Now()
+			}
 		}
 		if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) {
 			break
 		}
 	}
-	return a.backend.Commit(ctx, session.ID)
+	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committing chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
+	snapshot, err := a.backend.Commit(ctx, session.ID)
+	if err != nil {
+		return storage.Snapshot{}, err
+	}
+	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committed snapshot_id=%s chunks=%d bytes=%d", volume.VolumeID, session.ID, snapshot.SnapshotID, chunks, offset)
+	return snapshot, nil
 }
 
 func imageDigest(inspect []byte) string {

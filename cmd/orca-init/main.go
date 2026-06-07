@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -45,9 +46,13 @@ func main() {
 	if workdir != "" {
 		cmd.Dir = workdir
 	}
-	cmd.Stdout = consoleWriter{}
-	cmd.Stderr = consoleWriter{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	err := cmd.Run()
+	emitCaptured("stdout", stdout.String())
+	emitCaptured("stderr", stderr.String())
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
@@ -121,6 +126,23 @@ func decodeOptional(key string) string {
 
 func logf(format string, args ...any) {
 	line := fmt.Sprintf("orca-init: "+format+"\n", args...)
+	if f, err := os.OpenFile("/dev/console", os.O_WRONLY, 0); err == nil {
+		_, _ = f.WriteString(line)
+		_ = f.Close()
+	}
+}
+
+func emitCaptured(stream, text string) {
+	text = strings.TrimRight(text, "\n")
+	if text == "" {
+		return
+	}
+	for _, line := range strings.Split(text, "\n") {
+		writeConsole(fmt.Sprintf("orca-%s: %s\n", stream, line))
+	}
+}
+
+func writeConsole(line string) {
 	if f, err := os.OpenFile("/dev/console", os.O_WRONLY, 0); err == nil {
 		_, _ = f.WriteString(line)
 		_ = f.Close()

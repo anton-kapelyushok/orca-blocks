@@ -63,6 +63,7 @@ func main() {
 	mux.HandleFunc("GET /nodes", a.listNodes)
 	mux.HandleFunc("POST /volumes/create", a.createVolume)
 	mux.HandleFunc("GET /volumes/{id}", a.getVolume)
+	mux.HandleFunc("GET /images", a.listImages)
 	mux.HandleFunc("POST /buildImage", a.buildImage)
 	mux.HandleFunc("GET /getImageVolume", a.getImageVolume)
 	mux.HandleFunc("GET /envs/{id}", a.getEnv)
@@ -201,6 +202,15 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, status, out)
+}
+
+func (a *app) listImages(w http.ResponseWriter, r *http.Request) {
+	images, err := a.repo.ListBaseImages(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, images)
 }
 
 func (a *app) getImageVolume(w http.ResponseWriter, r *http.Request) {

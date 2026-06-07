@@ -153,6 +153,7 @@ type Repository interface {
 	CreateBaseImage(ctx context.Context, image BaseImage) (BaseImage, error)
 	GetBaseImage(ctx context.Context, baseImageID string) (BaseImage, error)
 	GetBaseImageByRef(ctx context.Context, imageRef string) (BaseImage, error)
+	ListBaseImages(ctx context.Context) ([]BaseImage, error)
 	CreateEnv(ctx context.Context, env Env) (Env, error)
 	GetEnv(ctx context.Context, envID string) (Env, error)
 	UpdateEnvSnapshot(ctx context.Context, envID, snapshotID string) error

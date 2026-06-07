@@ -116,6 +116,16 @@ func (r *MemRepo) GetBaseImageByRef(_ context.Context, imageRef string) (BaseIma
 	return BaseImage{}, ErrNotFound
 }
 
+func (r *MemRepo) ListBaseImages(_ context.Context) ([]BaseImage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]BaseImage, 0, len(r.images))
+	for _, image := range r.images {
+		out = append(out, image)
+	}
+	return out, nil
+}
+
 func (r *MemRepo) CreateEnv(_ context.Context, env Env) (Env, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

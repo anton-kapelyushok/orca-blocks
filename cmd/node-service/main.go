@@ -1303,9 +1303,23 @@ func writeFirecrackerRestoreConfig(path, vmStatePath, memPath, dataDevice, logPa
 
 func orcaInitLines(s string) string {
 	var lines []string
+	capturingCommandOutput := false
 	for _, line := range strings.Split(s, "\n") {
-		if strings.Contains(line, "orca-init:") || strings.Contains(line, "orca-timing:") {
-			lines = append(lines, strings.TrimSpace(line))
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch {
+		case strings.Contains(line, "orca-init: started image-rootfs command="):
+			capturingCommandOutput = true
+			lines = append(lines, line)
+		case strings.Contains(line, "orca-init: command ok") || strings.Contains(line, "orca-init: command failed"):
+			capturingCommandOutput = false
+			lines = append(lines, line)
+		case strings.Contains(line, "orca-init:") || strings.Contains(line, "orca-stdout:") || strings.Contains(line, "orca-stderr:") || strings.Contains(line, "orca-timing:"):
+			lines = append(lines, line)
+		case capturingCommandOutput:
+			lines = append(lines, "orca-stdout: "+line)
 		}
 	}
 	return strings.Join(lines, "\n")

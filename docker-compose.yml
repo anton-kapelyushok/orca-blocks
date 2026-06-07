@@ -143,6 +143,26 @@ services:
       timeout: 2s
       retries: 30
 
+  sandbox-service:
+    build:
+      context: .
+      args:
+        TARGET_CMD: sandbox-service
+        TARGET: ./cmd/sandbox-service
+    environment:
+      CONTROL_URL: http://control-service:8080
+      PORT: "8080"
+    ports:
+      - "18084:8080"
+    depends_on:
+      control-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
   node-1:
     build:
       context: .

@@ -195,6 +195,29 @@ LIMIT 1`, imageRef)
 	return scanBaseImage(row)
 }
 
+func (r *PostgresRepo) ListBaseImages(ctx context.Context) ([]BaseImage, error) {
+	rows, err := r.pool.Query(ctx, `
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+FROM base_images
+ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BaseImage
+	for rows.Next() {
+		var image BaseImage
+		if err := rows.Scan(&image.BaseImageID, &image.ImageRef, &image.ImageDigest, &image.VolumeID, &image.SnapshotID, &image.RootFSSizeBytes); err != nil {
+			return nil, err
+		}
+		out = append(out, image)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
