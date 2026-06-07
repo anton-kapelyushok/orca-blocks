@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -85,9 +86,16 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 	})
 	mux.HandleFunc("GET /", a.index)
+	mux.HandleFunc("GET /env", a.env)
+	mux.HandleFunc("GET /terminal", a.terminal)
+	mux.HandleFunc("GET /tty/output", a.ttyOutput)
+	mux.HandleFunc("POST /tty/input", a.ttyInput)
+	mux.HandleFunc("POST /tty/stop", a.ttyStop)
 	mux.HandleFunc("POST /build", a.buildImage)
 	mux.HandleFunc("POST /start", a.startEnv)
+	mux.HandleFunc("POST /start-tty", a.startTTY)
 	mux.HandleFunc("POST /resume", a.resumeEnv)
+	mux.HandleFunc("POST /resume-tty", a.resumeTTY)
 
 	addr := ":" + getenv("PORT", "8080")
 	log.Printf("sandbox-service listening on %s control=%s", addr, a.controlURL)
@@ -133,10 +141,7 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := envRequest(r)
-	if req["command"] == "" {
-		a.render(w, r, pageData{Error: "command is required"})
-		return
-	}
+	req["tty"] = true
 	if req["image"] == "" && req["base_image_id"] == "" {
 		a.render(w, r, pageData{Error: "image or base image id is required"})
 		return
@@ -146,7 +151,27 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
-	a.render(w, r, pageData{Result: summarizeRun("startEnv", out)})
+	http.Redirect(w, r, envURL(out), http.StatusSeeOther)
+}
+
+func (a *app) startTTY(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.render(w, r, pageData{Error: err.Error()})
+		return
+	}
+	req := envRequest(r)
+	delete(req, "command")
+	req["tty"] = true
+	if req["image"] == "" && req["base_image_id"] == "" {
+		a.render(w, r, pageData{Error: "image or base image id is required"})
+		return
+	}
+	out, err := a.postJSON(r.Context(), "/startEnv", req)
+	if err != nil {
+		a.render(w, r, pageData{Error: err.Error()})
+		return
+	}
+	http.Redirect(w, r, terminalURL(out), http.StatusSeeOther)
 }
 
 func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
@@ -155,12 +180,9 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := envRequest(r)
+	req["tty"] = true
 	if req["env_id"] == "" {
 		a.render(w, r, pageData{Error: "env id is required"})
-		return
-	}
-	if req["command"] == "" {
-		a.render(w, r, pageData{Error: "command is required"})
 		return
 	}
 	out, err := a.postJSON(r.Context(), "/resumeEnv", req)
@@ -168,7 +190,83 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
-	a.render(w, r, pageData{Result: summarizeRun("resumeEnv", out)})
+	http.Redirect(w, r, envURL(out), http.StatusSeeOther)
+}
+
+func (a *app) resumeTTY(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.render(w, r, pageData{Error: err.Error()})
+		return
+	}
+	req := envRequest(r)
+	delete(req, "command")
+	req["tty"] = true
+	if req["env_id"] == "" {
+		a.render(w, r, pageData{Error: "env id is required"})
+		return
+	}
+	out, err := a.postJSON(r.Context(), "/resumeEnv", req)
+	if err != nil {
+		a.render(w, r, pageData{Error: err.Error()})
+		return
+	}
+	http.Redirect(w, r, terminalURL(out), http.StatusSeeOther)
+}
+
+func (a *app) terminal(w http.ResponseWriter, r *http.Request) {
+	a.env(w, r)
+}
+
+func (a *app) env(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := map[string]string{
+		"EnvID":     r.URL.Query().Get("env_id"),
+		"SessionID": r.URL.Query().Get("session_id"),
+		"NodeID":    r.URL.Query().Get("node_id"),
+		"CPUCount":  withDefault(r.URL.Query().Get("cpu_count"), "1"),
+		"MemoryMiB": withDefault(r.URL.Query().Get("memory_mib"), "128"),
+	}
+	if err := template.Must(template.New("env").Parse(envHTML)).Execute(w, data); err != nil {
+		log.Printf("render env: %v", err)
+	}
+}
+
+func (a *app) ttyOutput(w http.ResponseWriter, r *http.Request) {
+	path := fmt.Sprintf("/tty/%s/%s/output?offset=%s", r.URL.Query().Get("node_id"), r.URL.Query().Get("session_id"), r.URL.Query().Get("offset"))
+	raw, err := a.get(r.Context(), path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(raw)
+}
+
+func (a *app) ttyInput(w http.ResponseWriter, r *http.Request) {
+	a.ttyPostText(w, r, "input")
+}
+
+func (a *app) ttyStop(w http.ResponseWriter, r *http.Request) {
+	a.ttyPostText(w, r, "stop")
+}
+
+func (a *app) ttyPostText(w http.ResponseWriter, r *http.Request, action string) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	path := fmt.Sprintf("/tty/%s/%s/%s", r.FormValue("node_id"), r.FormValue("session_id"), action)
+	if action == "stop" && r.FormValue("env_id") != "" {
+		path += "?env_id=" + r.FormValue("env_id")
+	}
+	body := strings.NewReader(r.FormValue("input"))
+	out, err := a.postRaw(r.Context(), path, body, "text/plain")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(out)
 }
 
 func envRequest(r *http.Request) map[string]any {
@@ -179,12 +277,30 @@ func envRequest(r *http.Request) map[string]any {
 		"command":       strings.TrimSpace(r.FormValue("command")),
 		"force_node":    strings.TrimSpace(r.FormValue("force_node")),
 	}
+	if n := positiveFormInt(r, "cpu_count"); n > 0 {
+		req["cpu_count"] = n
+	}
+	if n := positiveFormInt(r, "memory_mib"); n > 0 {
+		req["memory_mib"] = n
+	}
 	for k, v := range req {
 		if v == "" {
 			delete(req, k)
 		}
 	}
 	return req
+}
+
+func positiveFormInt(r *http.Request, name string) int {
+	raw := strings.TrimSpace(r.FormValue(name))
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 func (a *app) render(w http.ResponseWriter, r *http.Request, data pageData) {
@@ -253,6 +369,47 @@ func (a *app) postJSON(ctx context.Context, path string, in any) (map[string]any
 		return nil, err
 	}
 	return out, nil
+}
+
+func (a *app) postRaw(ctx context.Context, path string, body io.Reader, contentType string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.controlURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("POST %s failed: %s %s", path, resp.Status, strings.TrimSpace(string(raw)))
+	}
+	return raw, nil
+}
+
+func terminalURL(out map[string]any) string {
+	return envURL(out)
+}
+
+func envURL(out map[string]any) string {
+	parts := []string{
+		"env_id=" + urlQueryEscape(anyString(out["env_id"])),
+		"session_id=" + urlQueryEscape(anyString(out["session_id"])),
+		"node_id=" + urlQueryEscape(anyString(out["node_id"])),
+	}
+	if v := anyString(out["cpu_count"]); v != "" {
+		parts = append(parts, "cpu_count="+urlQueryEscape(v))
+	}
+	if v := anyString(out["memory_mib"]); v != "" {
+		parts = append(parts, "memory_mib="+urlQueryEscape(v))
+	}
+	return "/env?" + strings.Join(parts, "&")
+}
+
+func urlQueryEscape(v string) string {
+	return url.QueryEscape(v)
 }
 
 func summarizeRun(title string, out map[string]any) *runResult {
@@ -337,6 +494,33 @@ func asString(v any) string {
 	return ""
 }
 
+func anyString(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case float64:
+		return strconv.FormatInt(int64(x), 10)
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case json.Number:
+		return x.String()
+	default:
+		if v == nil {
+			return ""
+		}
+		return fmt.Sprint(v)
+	}
+}
+
+func withDefault(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
 func asInt64(v any) int64 {
 	switch n := v.(type) {
 	case float64:
@@ -381,32 +565,33 @@ const pageHTML = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Orca Sandbox</title>
   <style>
-    :root { color-scheme: light; --line: #d7dde5; --muted: #5f6b7a; --ink: #17202a; --bg: #f7f8fa; --panel: #fff; --accent: #1769aa; --bad: #a62929; --good: #176b3a; }
+    :root { color-scheme: light; --line: #d8dee7; --muted: #667085; --ink: #111827; --bg: #f3f5f8; --panel: #fff; --accent: #1769aa; --bad: #a62929; --good: #176b3a; }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
-    header { padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; justify-content: space-between; align-items: baseline; }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; justify-content: space-between; align-items: baseline; }
     h1 { margin: 0; font-size: 20px; }
     h2 { margin: 0 0 12px; font-size: 15px; }
-    main { padding: 18px 24px 32px; display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 18px; }
+    main { padding: 18px 24px 32px; display: grid; grid-template-columns: minmax(420px, 560px) 1fr; gap: 18px; align-items: start; }
     section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
-    label { display: block; margin: 10px 0 5px; color: var(--muted); font-size: 12px; font-weight: 650; }
-    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; font: inherit; background: #fff; }
-    textarea { min-height: 86px; resize: vertical; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
-    button { margin-top: 10px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; padding: 8px 11px; font-weight: 700; cursor: pointer; }
+    form { display: grid; gap: 10px; }
+    label { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; font: inherit; background: #fff; min-width: 0; }
+    textarea { min-height: 96px; resize: vertical; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    button { border: 0; border-radius: 6px; background: var(--accent); color: #fff; padding: 9px 12px; font-weight: 700; cursor: pointer; justify-self: start; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid var(--line); padding: 7px 5px; text-align: left; vertical-align: top; }
     th { color: var(--muted); font-size: 12px; }
     code, pre { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
     pre { margin: 0; padding: 10px; background: #101820; color: #e8eef5; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
-    .stack { display: grid; gap: 14px; }
-    .forms { display: grid; gap: 14px; }
+    .stack, .forms { display: grid; gap: 14px; }
     .muted { color: var(--muted); }
     .notice { border-color: #8cc49e; color: var(--good); background: #f0faf3; }
     .error { border-color: #e0a0a0; color: var(--bad); background: #fff5f5; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .thirds { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .meta { display: flex; flex-wrap: wrap; gap: 10px 14px; color: var(--muted); margin-bottom: 10px; }
     .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    @media (max-width: 900px) { main, .result-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 980px) { main, .result-grid, .thirds { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -420,28 +605,35 @@ const pageHTML = `<!doctype html>
       {{if .Error}}<section class="error">{{.Error}}</section>{{end}}
 
       <section>
-        <h2>Build Image</h2>
-        <form method="post" action="/build">
-          <label>Image</label>
-          <input name="image" value="alpine:3.22">
-          <label>Rootfs size MB</label>
-          <input name="rootfs_size_mb" value="512">
-          <button type="submit">Build</button>
-        </form>
-      </section>
-
-      <section>
-        <h2>Run Env</h2>
+        <h2>Create Env</h2>
         <form method="post" action="/start">
-          <label>Image</label>
-          <input name="image" placeholder="alpine:3.22">
-          <label>Base image id</label>
-          <input name="base_image_id" placeholder="optional">
-          <label>Command</label>
-          <textarea name="command">echo hello from orca</textarea>
-          <label>Node</label>
-          <select name="force_node"><option value="">scheduler</option><option>node-1</option><option>node-2</option></select>
-          <button type="submit">Run</button>
+          <div class="row">
+            <div>
+              <label>Image</label>
+              <input name="image" value="alpine:3.22">
+            </div>
+            <div>
+              <label>Base image id</label>
+              <input name="base_image_id" placeholder="optional">
+            </div>
+          </div>
+          <label>Env command</label>
+          <textarea name="command">sleep infinity</textarea>
+          <div class="thirds">
+            <div>
+              <label>vCPUs</label>
+              <input name="cpu_count" type="number" min="1" value="1">
+            </div>
+            <div>
+              <label>Memory MiB</label>
+              <input name="memory_mib" type="number" min="64" step="64" value="128">
+            </div>
+            <div>
+              <label>Node</label>
+              <select name="force_node"><option value="">scheduler</option><option>node-1</option><option>node-2</option></select>
+            </div>
+          </div>
+          <button type="submit">Create Env</button>
         </form>
       </section>
 
@@ -450,11 +642,40 @@ const pageHTML = `<!doctype html>
         <form method="post" action="/resume">
           <label>Env id</label>
           <input name="env_id" placeholder="env-...">
-          <label>Command</label>
-          <textarea name="command">cat /etc/orca-image-ref</textarea>
-          <label>Node</label>
-          <select name="force_node"><option value="">scheduler</option><option>node-1</option><option>node-2</option></select>
-          <button type="submit">Resume</button>
+          <label>Env command</label>
+          <textarea name="command">sleep infinity</textarea>
+          <div class="thirds">
+            <div>
+              <label>vCPUs</label>
+              <input name="cpu_count" type="number" min="1" value="1">
+            </div>
+            <div>
+              <label>Memory MiB</label>
+              <input name="memory_mib" type="number" min="64" step="64" value="128">
+            </div>
+            <div>
+              <label>Node</label>
+              <select name="force_node"><option value="">scheduler</option><option>node-1</option><option>node-2</option></select>
+            </div>
+          </div>
+          <button type="submit">Resume Env</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Build Base Image</h2>
+        <form method="post" action="/build">
+          <div class="row">
+            <div>
+              <label>Image</label>
+              <input name="image" value="alpine:3.22">
+            </div>
+            <div>
+              <label>Rootfs size MB</label>
+              <input name="rootfs_size_mb" type="number" min="128" value="512">
+            </div>
+          </div>
+          <button type="submit">Build</button>
         </form>
       </section>
     </div>
@@ -543,5 +764,204 @@ const pageHTML = `<!doctype html>
       {{end}}
     </div>
   </main>
+</body>
+</html>`
+
+const envHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orca Env</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; font: 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0d1117; color: #dfe8f1; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; background: #151b23; border-bottom: 1px solid #30363d; }
+    main { display: grid; grid-template-columns: 1fr 360px; height: calc(100vh - 43px); min-height: 0; }
+    #terminal { min-height: 0; padding: 8px; overflow: hidden; }
+    #terminal .xterm { height: 100%; }
+    aside { display: grid; grid-template-rows: auto auto 1fr; gap: 12px; padding: 12px; border-left: 1px solid #30363d; background: #151b23; min-width: 0; overflow: auto; }
+    #status { color: #8b949e; font: 12px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel { display: grid; gap: 8px; }
+    label { color: #8b949e; font-size: 12px; font-weight: 650; }
+    textarea, input, select { width: 100%; border: 1px solid #30363d; border-radius: 6px; background: #0d1117; color: #dfe8f1; padding: 8px; font: 13px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    textarea { min-height: 96px; resize: vertical; }
+    button { font: 13px system-ui, sans-serif; color: #fff; background: #1769aa; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+    button.danger { background: #9b2f2f; }
+    button:disabled { cursor: default; opacity: .55; }
+    dl { display: grid; grid-template-columns: 72px 1fr; gap: 6px 8px; margin: 0; color: #8b949e; font-size: 12px; }
+    dt { color: #6e7681; }
+    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    code { color: #9fc7ee; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; } aside { border-left: 0; border-top: 1px solid #30363d; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>env <code>{{.EnvID}}</code></div>
+    <a href="/" style="color:#9fc7ee">Sandbox</a>
+  </header>
+  <main>
+    <div id="terminal"></div>
+    <aside>
+      <section class="panel">
+        <div id="status">connecting</div>
+        <dl>
+          <dt>session</dt><dd><code>{{.SessionID}}</code></dd>
+          <dt>node</dt><dd><code>{{.NodeID}}</code></dd>
+          <dt>vCPUs</dt><dd><code>{{.CPUCount}}</code></dd>
+          <dt>memory</dt><dd><code>{{.MemoryMiB}} MiB</code></dd>
+        </dl>
+        <button type="button" class="danger" id="stop">Stop / Commit</button>
+      </section>
+      <form class="panel" method="post" action="/resume" id="resumeForm">
+        <input type="hidden" name="env_id" value="{{.EnvID}}">
+        <label>Resume Command</label>
+        <textarea name="command">sleep infinity</textarea>
+        <div class="row">
+          <div>
+            <label>vCPUs</label>
+            <input name="cpu_count" type="number" min="1" value="{{.CPUCount}}">
+          </div>
+          <div>
+            <label>Memory MiB</label>
+            <input name="memory_mib" type="number" min="64" step="64" value="{{.MemoryMiB}}">
+          </div>
+        </div>
+        <label>Node</label>
+        <select name="force_node"><option value="">scheduler</option><option>node-1</option><option>node-2</option></select>
+        <button type="submit" id="resumeButton">Resume Env</button>
+      </form>
+    </aside>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+  <script>
+    const envID = "{{.EnvID}}";
+    const sessionID = "{{.SessionID}}";
+    const nodeID = "{{.NodeID}}";
+    const status = document.getElementById("status");
+    const stopButton = document.getElementById("stop");
+    const resumeButton = document.getElementById("resumeButton");
+    const term = new Terminal({
+      cursorBlink: true,
+      convertEol: false,
+      fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
+      fontSize: 14,
+      scrollback: 5000,
+      theme: {
+        background: "#0d1117",
+        foreground: "#dfe8f1",
+        cursor: "#dfe8f1",
+        selectionBackground: "#264f78"
+      }
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    const pollIntervalMS = 100;
+    let offset = 0;
+    let sessionClosed = !sessionID || !nodeID;
+    let committed = !sessionID || !nodeID;
+
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById("terminal"));
+    fitAddon.fit();
+    term.focus();
+    window.addEventListener("resize", () => fitAddon.fit());
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+    async function postInput(data) {
+      if (sessionClosed) return;
+      const body = new URLSearchParams();
+      body.set("env_id", envID);
+      body.set("node_id", nodeID);
+      body.set("session_id", sessionID);
+      body.set("input", data);
+      const res = await fetch("/tty/input", { method: "POST", body });
+      if (!res.ok) {
+        term.writeln("");
+        term.writeln("[orca] " + await res.text());
+      }
+    }
+    term.onData((data) => {
+      postInput(data).catch((err) => {
+        term.writeln("");
+        term.writeln("[orca] input failed: " + err.message);
+      });
+    });
+
+    async function poll() {
+      if (committed || !sessionID || !nodeID) {
+        setStatus("ready to resume");
+        stopButton.disabled = true;
+        resumeButton.disabled = false;
+        return;
+      }
+      try {
+        const res = await fetch("/tty/output?node_id=" + encodeURIComponent(nodeID) + "&session_id=" + encodeURIComponent(sessionID) + "&offset=" + offset);
+        if (!res.ok) {
+          sessionClosed = true;
+          committed = true;
+          stopButton.disabled = true;
+          resumeButton.disabled = false;
+          setStatus("ready to resume");
+          term.writeln("");
+          term.writeln("[orca] " + await res.text());
+          return;
+        }
+        const out = await res.json();
+        offset = out.offset || offset;
+        if (out.output) term.write(out.output);
+        if (out.done) {
+          sessionClosed = true;
+          setStatus("exited; commit before resume");
+          stopButton.textContent = "Commit";
+          resumeButton.disabled = true;
+          return;
+        }
+        setStatus("connected");
+        resumeButton.disabled = true;
+      } catch (err) {
+        setStatus("poll failed: " + err.message);
+      }
+      setTimeout(poll, pollIntervalMS);
+    }
+    async function stopSession() {
+      if (committed) return;
+      sessionClosed = true;
+      committed = true;
+      stopButton.disabled = true;
+      resumeButton.disabled = true;
+      setStatus("stopping");
+      term.writeln("");
+      term.writeln("[orca] stopping and committing...");
+      const body = new URLSearchParams();
+      body.set("env_id", envID);
+      body.set("node_id", nodeID);
+      body.set("session_id", sessionID);
+      const res = await fetch("/tty/stop", { method: "POST", body });
+      if (!res.ok) {
+        committed = false;
+        setStatus("stop failed");
+        term.writeln("[orca] " + await res.text());
+        stopButton.disabled = false;
+        return;
+      }
+      const out = await res.json();
+      setStatus("stopped snapshot " + (out.snapshot_id || ""));
+      term.writeln("[orca] stopped snapshot " + (out.snapshot_id || ""));
+      resumeButton.disabled = false;
+    }
+    stopButton.addEventListener("click", () => {
+      stopSession().catch((err) => {
+        setStatus("stop failed");
+        term.writeln("[orca] stop failed: " + err.message);
+      });
+    });
+    poll();
+  </script>
 </body>
 </html>`

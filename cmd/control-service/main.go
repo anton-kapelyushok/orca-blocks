@@ -69,6 +69,9 @@ func main() {
 	mux.HandleFunc("GET /envs/{id}", a.getEnv)
 	mux.HandleFunc("POST /startEnv", a.startEnv)
 	mux.HandleFunc("POST /resumeEnv", a.resumeEnv)
+	mux.HandleFunc("GET /tty/{node}/{session}/output", a.ttyOutput)
+	mux.HandleFunc("POST /tty/{node}/{session}/input", a.ttyInput)
+	mux.HandleFunc("POST /tty/{node}/{session}/stop", a.ttyStop)
 	mux.HandleFunc("POST /sessions/start", a.startSession)
 	mux.HandleFunc("POST /scheduler/force", a.forceLastNode)
 
@@ -130,6 +133,8 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		FSType             string `json:"fs_type"`
 		FirecrackerMode    string `json:"firecracker_mode"`
 		FirecrackerPayload string `json:"firecracker_payload"`
+		VCPUCount          int    `json:"cpu_count"`
+		MemoryMiB          int    `json:"memory_mib"`
 		CommitAfterRun     *bool  `json:"commit_after_run"`
 		SaveMemory         bool   `json:"save_memory_snapshot"`
 		RestoreMemory      string `json:"restore_memory_snapshot_path"`
@@ -165,6 +170,12 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.FirecrackerPayload != "" {
 		startReq["firecracker_payload"] = req.FirecrackerPayload
+	}
+	if req.VCPUCount > 0 {
+		startReq["cpu_count"] = req.VCPUCount
+	}
+	if req.MemoryMiB > 0 {
+		startReq["memory_mib"] = req.MemoryMiB
 	}
 	if req.CommitAfterRun != nil {
 		startReq["commit_after_run"] = *req.CommitAfterRun
@@ -251,6 +262,9 @@ type envRunRequest struct {
 	Command     string `json:"command"`
 	Cmd         string `json:"cmd"`
 	ForceNode   string `json:"force_node"`
+	VCPUCount   int    `json:"cpu_count"`
+	MemoryMiB   int    `json:"memory_mib"`
+	TTY         bool   `json:"tty"`
 }
 
 func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
@@ -259,7 +273,7 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	command := firstNonEmpty(req.Command, req.Cmd)
-	if command == "" {
+	if command == "" && !req.TTY {
 		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
@@ -295,7 +309,7 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command)
+	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command, req.TTY, req.VCPUCount, req.MemoryMiB)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -309,6 +323,9 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		Command   string `json:"command"`
 		Cmd       string `json:"cmd"`
 		ForceNode string `json:"force_node"`
+		VCPUCount int    `json:"cpu_count"`
+		MemoryMiB int    `json:"memory_mib"`
+		TTY       bool   `json:"tty"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -318,7 +335,7 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "env_id is required", http.StatusBadRequest)
 		return
 	}
-	if command == "" {
+	if command == "" && !req.TTY {
 		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
@@ -327,7 +344,7 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command)
+	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command, req.TTY, req.VCPUCount, req.MemoryMiB)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -352,18 +369,31 @@ func (a *app) resolveBaseImage(ctx context.Context, baseImageID, imageRef string
 	return storage.BaseImage{}, fmt.Errorf("base image %q is not built; call buildImage first: %w", imageRef, storage.ErrNotFound)
 }
 
-func (a *app) runEnvCommand(ctx context.Context, env storage.Env, forcedNode, command string) (map[string]any, error) {
+func (a *app) runEnvCommand(ctx context.Context, env storage.Env, forcedNode, command string, tty bool, vcpuCount, memoryMiB int) (map[string]any, error) {
 	volume, err := a.repo.GetVolume(ctx, env.VolumeID)
 	if err != nil {
 		return nil, err
 	}
-	out, err := a.startNodeSession(ctx, volume, forcedNode, map[string]any{
+	mode := "image-rootfs-run"
+	commitAfterRun := true
+	if tty {
+		mode = "image-rootfs-tty"
+		commitAfterRun = false
+	}
+	startReq := map[string]any{
 		"volume_id":           env.VolumeID,
 		"runtime":             "firecracker",
-		"firecracker_mode":    "image-rootfs-run",
+		"firecracker_mode":    mode,
 		"firecracker_payload": command,
-		"commit_after_run":    true,
-	})
+		"commit_after_run":    commitAfterRun,
+	}
+	if vcpuCount > 0 {
+		startReq["cpu_count"] = vcpuCount
+	}
+	if memoryMiB > 0 {
+		startReq["memory_mib"] = memoryMiB
+	}
+	out, err := a.startNodeSession(ctx, volume, forcedNode, startReq)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +408,124 @@ func (a *app) runEnvCommand(ctx context.Context, env storage.Env, forcedNode, co
 	out["image_ref"] = env.ImageRef
 	out["env_volume_id"] = env.VolumeID
 	out["latest_snapshot_id"] = env.LatestSnapshotID
+	if vcpuCount > 0 {
+		out["cpu_count"] = float64(vcpuCount)
+	}
+	if memoryMiB > 0 {
+		out["memory_mib"] = float64(memoryMiB)
+	}
+	if tty {
+		out["tty"] = true
+	}
 	return out, nil
+}
+
+func (a *app) ttyOutput(w http.ResponseWriter, r *http.Request) {
+	target, ok := a.ttyTarget(w, r)
+	if !ok {
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target+"/output?offset="+r.URL.Query().Get("offset"), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	a.proxyJSON(w, req)
+}
+
+func (a *app) ttyInput(w http.ResponseWriter, r *http.Request) {
+	target, ok := a.ttyTarget(w, r)
+	if !ok {
+		return
+	}
+	defer r.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target+"/input", bytes.NewReader(body))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	a.proxyJSON(w, req)
+}
+
+func (a *app) ttyStop(w http.ResponseWriter, r *http.Request) {
+	target, ok := a.ttyTarget(w, r)
+	if !ok {
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target+"/stop", nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	status, out, err := a.doJSON(req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if status >= 300 {
+		writeJSON(w, status, out)
+		return
+	}
+	if envID := r.URL.Query().Get("env_id"); envID != "" {
+		if snapshotID, ok := out["snapshot_id"].(string); ok && snapshotID != "" {
+			if err := a.repo.UpdateEnvSnapshot(r.Context(), envID, snapshotID); err != nil {
+				writeError(w, err)
+				return
+			}
+			out["latest_snapshot_id"] = snapshotID
+		}
+	}
+	writeJSON(w, status, out)
+}
+
+func (a *app) ttyTarget(w http.ResponseWriter, r *http.Request) (string, bool) {
+	n, ok := a.nodes[r.PathValue("node")]
+	if !ok {
+		http.Error(w, "unknown node", http.StatusBadRequest)
+		return "", false
+	}
+	sessionID := r.PathValue("session")
+	if sessionID == "" {
+		http.Error(w, "session is required", http.StatusBadRequest)
+		return "", false
+	}
+	return n.URL + "/sessions/" + sessionID + "/tty", true
+}
+
+func (a *app) proxyJSON(w http.ResponseWriter, req *http.Request) {
+	status, out, err := a.doJSON(req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, status, out)
+}
+
+func (a *app) doJSON(req *http.Request) (int, map[string]any, error) {
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, err
+	}
+	out := map[string]any{}
+	if len(body) > 0 && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		if err := json.Unmarshal(body, &out); err != nil {
+			return resp.StatusCode, nil, err
+		}
+	} else if len(body) > 0 {
+		out["error"] = strings.TrimSpace(string(body))
+	}
+	return resp.StatusCode, out, nil
 }
 
 func (a *app) startNodeSession(ctx context.Context, volume storage.Volume, forcedNode string, startReq map[string]any) (map[string]any, error) {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/anton-k/orca-blocks/pkg/nbd"
 	"github.com/anton-k/orca-blocks/pkg/storage"
+	"github.com/creack/pty"
 )
 
 type app struct {
@@ -49,6 +49,8 @@ type app struct {
 	mountMu             sync.Mutex
 	mounts              map[string]*mountedSession
 	usedNBDDevices      map[string]struct{}
+	ttyMu               sync.Mutex
+	ttySessions         map[string]*firecrackerTTYSession
 }
 
 type mountedSession struct {
@@ -58,13 +60,24 @@ type mountedSession struct {
 }
 
 type firecrackerRunRequest struct {
-	Mode           string
-	Payload        string
-	CommitAfterRun *bool
-	SaveMemory     bool
-	RestoreMemory  string
-	RestoreVMState string
-	RestoreDevice  string
+	Mode             string
+	Payload          string
+	VCPUCount        int
+	MemoryMiB        int
+	RequestStartedAt time.Time
+	CommitAfterRun   *bool
+	SaveMemory       bool
+	RestoreMemory    string
+	RestoreVMState   string
+	RestoreDevice    string
+}
+
+type firecrackerTTYSession struct {
+	sessionID string
+	process   *firecrackerProcess
+	stopFn    func() (storage.Snapshot, error)
+	mu        sync.Mutex
+	stopped   bool
 }
 
 type firecrackerStepTiming struct {
@@ -121,6 +134,7 @@ func main() {
 		nbdDevicePrefix:     getenv("NBD_DEVICE_PREFIX", "/dev/nbd"),
 		mounts:              map[string]*mountedSession{},
 		usedNBDDevices:      map[string]struct{}{},
+		ttySessions:         map[string]*firecrackerTTYSession{},
 	}
 	if err := a.preflightKVM(); err != nil {
 		if a.requireKVM {
@@ -162,6 +176,9 @@ func main() {
 	mux.HandleFunc("POST /sessions/{id}/commit", a.commit)
 	mux.HandleFunc("POST /sessions/{id}/stop", a.stop)
 	mux.HandleFunc("GET /sessions/{id}/stats", a.stats)
+	mux.HandleFunc("GET /sessions/{id}/tty/output", a.ttyOutput)
+	mux.HandleFunc("POST /sessions/{id}/tty/input", a.ttyInput)
+	mux.HandleFunc("POST /sessions/{id}/tty/stop", a.ttyStop)
 
 	addr := ":" + getenv("PORT", "8080")
 	log.Printf("%s listening on %s", nodeID, addr)
@@ -186,6 +203,7 @@ func (a *app) createVolume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
+	requestStartedAt := time.Now()
 	var req struct {
 		Runtime            string `json:"runtime"`
 		VolumeID           string `json:"volume_id"`
@@ -195,6 +213,8 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		FSType             string `json:"fs_type"`
 		FirecrackerMode    string `json:"firecracker_mode"`
 		FirecrackerPayload string `json:"firecracker_payload"`
+		VCPUCount          int    `json:"cpu_count"`
+		MemoryMiB          int    `json:"memory_mib"`
 		CommitAfterRun     *bool  `json:"commit_after_run"`
 		SaveMemory         bool   `json:"save_memory_snapshot"`
 		RestoreMemory      string `json:"restore_memory_snapshot_path"`
@@ -258,13 +278,16 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		resp["nbd_device"] = mounted.NBDDevice
 	case "firecracker":
 		result, err := a.runFirecrackerSession(r.Context(), session, firecrackerRunRequest{
-			Mode:           req.FirecrackerMode,
-			Payload:        req.FirecrackerPayload,
-			CommitAfterRun: req.CommitAfterRun,
-			SaveMemory:     req.SaveMemory,
-			RestoreMemory:  req.RestoreMemory,
-			RestoreVMState: req.RestoreVMState,
-			RestoreDevice:  req.RestoreDevice,
+			Mode:             req.FirecrackerMode,
+			Payload:          req.FirecrackerPayload,
+			VCPUCount:        req.VCPUCount,
+			MemoryMiB:        req.MemoryMiB,
+			RequestStartedAt: requestStartedAt,
+			CommitAfterRun:   req.CommitAfterRun,
+			SaveMemory:       req.SaveMemory,
+			RestoreMemory:    req.RestoreMemory,
+			RestoreVMState:   req.RestoreVMState,
+			RestoreDevice:    req.RestoreDevice,
 		})
 		if err != nil {
 			a.unregisterNBDExport(session.ID)
@@ -465,6 +488,18 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		}
 		timings = append(timings, timing)
 	}
+	recordStatus := func(name string, started time.Time, ended time.Time, status string, err error) {
+		timing := firecrackerStepTiming{
+			Name:       name,
+			StartedAt:  started.UTC().Format(time.RFC3339Nano),
+			DurationMS: ended.Sub(started).Milliseconds(),
+			Status:     status,
+		}
+		if err != nil {
+			timing.Error = err.Error()
+		}
+		timings = append(timings, timing)
+	}
 	writeTimings := func(path string) {
 		raw, err := json.MarshalIndent(timings, "", "  ")
 		if err != nil {
@@ -483,7 +518,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	if mode == "" {
 		mode = "smoke"
 	}
-	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" && mode != "docker-smoke" && mode != "docker-read" && mode != "image-rootfs-smoke" && mode != "image-rootfs-run" {
+	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" && mode != "docker-smoke" && mode != "docker-read" && mode != "image-rootfs-smoke" && mode != "image-rootfs-run" && mode != "image-rootfs-tty" {
 		return nil, fmt.Errorf("unsupported firecracker_mode %q", mode)
 	}
 	if mode == "restore" && (req.RestoreMemory == "" || req.RestoreVMState == "" || req.RestoreDevice == "") {
@@ -492,6 +527,14 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	payload := req.Payload
 	if payload == "" {
 		payload = "hello-from-firecracker"
+	}
+	vcpuCount := req.VCPUCount
+	if vcpuCount <= 0 {
+		vcpuCount = 1
+	}
+	memoryMiB := req.MemoryMiB
+	if memoryMiB <= 0 {
+		memoryMiB = 128
 	}
 	commitAfterRun := firecrackerModeWritesVolume(mode)
 	if req.CommitAfterRun != nil {
@@ -541,9 +584,12 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		a.releaseNBDDevice(device)
 		detached = true
 	}
+	cleanupOnReturn := true
 	defer func() {
-		detach()
-		writeTimings(timingsPath)
+		if cleanupOnReturn {
+			detach()
+			writeTimings(timingsPath)
+		}
 	}()
 
 	started = time.Now()
@@ -627,18 +673,27 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		initrdPath = ""
 		guestDataDevice = ""
 		rootfsReadOnly = mode == "image-rootfs-smoke"
-		bootArgs = imageRootFSBootArgs(payload, rootfsReadOnly)
+		bootArgs = imageRootFSBootArgs(payload, rootfsReadOnly, mode == "image-rootfs-tty")
 		successMarker = "orca-init: image-rootfs ok"
+		if mode == "image-rootfs-tty" {
+			successMarker = "orca-init: tty ready"
+		}
 	}
 	started = time.Now()
-	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, rootfsReadOnly, initrdPath, guestDataDevice, false, logPath, bootArgs); err != nil {
+	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, rootfsReadOnly, initrdPath, guestDataDevice, false, logPath, bootArgs, vcpuCount, memoryMiB); err != nil {
 		record("write_firecracker_config", started, err)
 		return nil, err
 	}
 	record("write_firecracker_config", started, nil)
 
-	runCtx, cancel := context.WithTimeout(ctx, a.firecrackerTimeout)
-	defer cancel()
+	var runCtx context.Context
+	var cancel context.CancelFunc
+	if mode == "image-rootfs-tty" {
+		runCtx, cancel = context.WithCancel(context.Background())
+	} else {
+		runCtx, cancel = context.WithTimeout(ctx, a.firecrackerTimeout)
+		defer cancel()
+	}
 	log.Printf("running firecracker session=%s mode=%s device=%s", session.ID, mode, device)
 	cmd := exec.CommandContext(runCtx, a.firecrackerBin, "--api-sock", socketPath, "--config-file", configPath)
 	started = time.Now()
@@ -654,6 +709,64 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		return nil, fmt.Errorf("%w: %s", err, tail(serial, 4096))
 	}
 	record("run_firecracker", started, nil)
+	if firstOutputAt, ok := run.firstUserOutputAt(); ok && !req.RequestStartedAt.IsZero() {
+		recordStatus("request_to_first_user_output", req.RequestStartedAt, firstOutputAt, "ok", nil)
+	} else if !req.RequestStartedAt.IsZero() {
+		recordStatus("request_to_first_user_output", req.RequestStartedAt, time.Now(), "not_observed", nil)
+	}
+	if mode == "image-rootfs-tty" {
+		cleanupOnReturn = false
+		ttySession := &firecrackerTTYSession{
+			sessionID: session.ID,
+			process:   run,
+		}
+		ttySession.stopFn = func() (storage.Snapshot, error) {
+			_ = run.writeInput("sync\nexit\n")
+			if err := run.waitTimeout(3 * time.Second); err != nil {
+				run.stop()
+			}
+			cancel()
+			started := time.Now()
+			if err := runCommand("sync"); err != nil {
+				record("sync_host", started, err)
+				writeTimings(timingsPath)
+				return storage.Snapshot{}, err
+			}
+			record("sync_host", started, nil)
+			started = time.Now()
+			if err := runCommand("blockdev", "--flushbufs", device); err != nil {
+				record("flush_nbd_device", started, err)
+				writeTimings(timingsPath)
+				return storage.Snapshot{}, err
+			}
+			record("flush_nbd_device", started, nil)
+			detach()
+			started = time.Now()
+			snapshot, err := a.backend.CommitWithOptions(context.Background(), session.ID, storage.CommitOptions{
+				UploadBatchChunks: a.nbdCommitBatch,
+			})
+			record("commit_snapshot", started, err)
+			_ = a.backend.Stop(session.ID)
+			writeTimings(timingsPath)
+			return snapshot, err
+		}
+		a.ttyMu.Lock()
+		a.ttySessions[session.ID] = ttySession
+		a.ttyMu.Unlock()
+		resp := map[string]string{
+			"firecracker_mode":      mode,
+			"firecracker_boot_mode": firecrackerBootMode,
+			"firecracker_device":    device,
+			"firecracker_output":    orcaInitLines(run.output()),
+			"firecracker_work_dir":  workDir,
+			"cpu_count":             strconv.Itoa(vcpuCount),
+			"memory_mib":            strconv.Itoa(memoryMiB),
+			"tty":                   "true",
+		}
+		resp["firecracker_timings"] = timingsJSON(timings)
+		writeTimings(timingsPath)
+		return resp, nil
+	}
 	if createMemorySnapshot {
 		started = time.Now()
 		if err := waitForPath(socketPath, 2*time.Second); err != nil {
@@ -713,6 +826,8 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		"firecracker_device":    device,
 		"firecracker_output":    orcaInitLines(serial),
 		"firecracker_work_dir":  workDir,
+		"cpu_count":             strconv.Itoa(vcpuCount),
+		"memory_mib":            strconv.Itoa(memoryMiB),
 	}
 	if createMemorySnapshot {
 		resp["memory_snapshot_path"] = memSnapshotPath
@@ -743,7 +858,7 @@ func firecrackerModeWritesVolume(mode string) bool {
 }
 
 func firecrackerModeUsesSessionRootFS(mode string) bool {
-	return mode == "image-rootfs-smoke" || mode == "image-rootfs-run"
+	return mode == "image-rootfs-smoke" || mode == "image-rootfs-run" || mode == "image-rootfs-tty"
 }
 
 func (a *app) detachMountedSession(sessionID string) error {
@@ -845,57 +960,81 @@ func (a *app) restoreFirecrackerSession(
 }
 
 type firecrackerProcess struct {
-	cmd        *exec.Cmd
-	marker     string
-	markerCh   chan struct{}
-	doneCh     chan struct{}
-	doneErr    error
-	closeFile  func()
-	markerOnce sync.Once
-	stopOnce   sync.Once
-	mu         sync.Mutex
-	outputBuf  bytes.Buffer
+	cmd                *exec.Cmd
+	stdin              io.WriteCloser
+	marker             string
+	markerCh           chan struct{}
+	doneCh             chan struct{}
+	doneErr            error
+	closeFile          func()
+	markerOnce         sync.Once
+	stopOnce           sync.Once
+	userOutputOnce     sync.Once
+	mu                 sync.Mutex
+	outputBuf          bytes.Buffer
+	firstUserOutput    time.Time
+	hasFirstUserOutput bool
 }
 
 func startFirecrackerProcess(cmd *exec.Cmd, serialPath, marker string) (*firecrackerProcess, error) {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
 	serialFile, err := os.OpenFile(serialPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
+	ttyFile, err := pty.Start(cmd)
+	if err != nil {
+		_ = serialFile.Close()
+		return nil, err
+	}
 	p := &firecrackerProcess{
 		cmd:      cmd,
+		stdin:    ttyFile,
 		marker:   marker,
 		markerCh: make(chan struct{}),
 		doneCh:   make(chan struct{}),
 		closeFile: func() {
+			_ = ttyFile.Close()
 			_ = serialFile.Close()
 		},
 	}
 	collect := func(r io.Reader) {
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text() + "\n"
-			p.appendOutput(serialFile, line)
-			if strings.Contains(line, marker) {
-				p.signalMarker()
+		buf := make([]byte, 4096)
+		var pendingLine strings.Builder
+		capturingLegacyUserOutput := false
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				p.appendOutput(serialFile, chunk)
+				p.signalMarkerIfOutputContainsMarker()
+				pendingLine.WriteString(chunk)
+				for {
+					lineBuf := pendingLine.String()
+					idx := strings.IndexByte(lineBuf, '\n')
+					if idx < 0 {
+						break
+					}
+					line := lineBuf[:idx+1]
+					pendingLine.Reset()
+					pendingLine.WriteString(lineBuf[idx+1:])
+					userOutput := isUserOutputLine(line, capturingLegacyUserOutput)
+					switch {
+					case strings.Contains(line, "orca-init: started image-rootfs command="):
+						capturingLegacyUserOutput = true
+					case strings.Contains(line, "orca-init: command ok") || strings.Contains(line, "orca-init: command failed"):
+						capturingLegacyUserOutput = false
+					}
+					if userOutput {
+						p.signalUserOutput(time.Now())
+					}
+				}
+			}
+			if err != nil {
+				return
 			}
 		}
 	}
-	if err := cmd.Start(); err != nil {
-		_ = serialFile.Close()
-		return nil, err
-	}
-	go collect(stdout)
-	go collect(stderr)
+	go collect(ttyFile)
 	go func() {
 		err := cmd.Wait()
 		p.signalMarkerIfOutputContainsMarker()
@@ -931,6 +1070,22 @@ func (p *firecrackerProcess) signalMarker() {
 	})
 }
 
+func (p *firecrackerProcess) signalUserOutput(at time.Time) {
+	p.userOutputOnce.Do(func() {
+		p.mu.Lock()
+		p.firstUserOutput = at
+		p.hasFirstUserOutput = true
+		p.mu.Unlock()
+	})
+}
+
+func isUserOutputLine(line string, capturingLegacyUserOutput bool) bool {
+	if strings.Contains(line, "orca-stdout:") || strings.Contains(line, "orca-stderr:") {
+		return true
+	}
+	return capturingLegacyUserOutput && !strings.Contains(line, "orca-init:")
+}
+
 func (p *firecrackerProcess) waitForMarkerOrExit(ctx context.Context) error {
 	select {
 	case <-p.markerCh:
@@ -955,8 +1110,21 @@ func (p *firecrackerProcess) wait() error {
 	return p.err()
 }
 
+func (p *firecrackerProcess) waitTimeout(timeout time.Duration) error {
+	select {
+	case <-p.doneCh:
+		p.stopOnce.Do(p.closeFile)
+		return p.err()
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out waiting for firecracker process")
+	}
+}
+
 func (p *firecrackerProcess) stop() {
 	p.stopOnce.Do(func() {
+		if p.stdin != nil {
+			_ = p.stdin.Close()
+		}
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
 		}
@@ -975,6 +1143,47 @@ func (p *firecrackerProcess) output() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.outputBuf.String()
+}
+
+func (p *firecrackerProcess) outputSince(offset int) (string, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	s := p.outputBuf.String()
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(s) {
+		offset = len(s)
+	}
+	return s[offset:], len(s)
+}
+
+func (p *firecrackerProcess) writeInput(input string) error {
+	select {
+	case <-p.doneCh:
+		return fmt.Errorf("firecracker process has exited")
+	default:
+	}
+	if p.stdin == nil {
+		return fmt.Errorf("firecracker stdin is not available")
+	}
+	_, err := io.WriteString(p.stdin, input)
+	return err
+}
+
+func (p *firecrackerProcess) isDone() bool {
+	select {
+	case <-p.doneCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *firecrackerProcess) firstUserOutputAt() (time.Time, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.firstUserOutput, p.hasFirstUserOutput
 }
 
 func (a *app) allocateNBDDevice() (string, error) {
@@ -1033,6 +1242,90 @@ func runCommand(name string, args ...string) error {
 		log.Printf("%s output: %s", name, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func (a *app) getTTYSession(sessionID string) (*firecrackerTTYSession, bool) {
+	a.ttyMu.Lock()
+	defer a.ttyMu.Unlock()
+	s, ok := a.ttySessions[sessionID]
+	return s, ok
+}
+
+func (a *app) ttyOutput(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	tty, ok := a.getTTYSession(sessionID)
+	if !ok {
+		writeError(w, storage.ErrNotFound)
+		return
+	}
+	offset := 0
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			http.Error(w, "offset must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+		offset = n
+	}
+	output, next := tty.process.outputSince(offset)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id": sessionID,
+		"offset":     next,
+		"output":     output,
+		"done":       tty.process.isDone(),
+	})
+}
+
+func (a *app) ttyInput(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	tty, ok := a.getTTYSession(sessionID)
+	if !ok {
+		writeError(w, storage.ErrNotFound)
+		return
+	}
+	defer r.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tty.process.writeInput(string(raw)); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+func (a *app) ttyStop(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	tty, ok := a.getTTYSession(sessionID)
+	if !ok {
+		writeError(w, storage.ErrNotFound)
+		return
+	}
+	tty.mu.Lock()
+	if tty.stopped {
+		tty.mu.Unlock()
+		http.Error(w, "tty session already stopped", http.StatusConflict)
+		return
+	}
+	tty.stopped = true
+	tty.mu.Unlock()
+
+	snapshot, err := tty.stopFn()
+	a.ttyMu.Lock()
+	delete(a.ttySessions, sessionID)
+	a.ttyMu.Unlock()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"session_id":         sessionID,
+		"snapshot_id":        snapshot.SnapshotID,
+		"manifest_key":       snapshot.ManifestKey,
+		"firecracker_output": orcaInitLines(tty.process.output()),
+	})
 }
 
 func pauseFirecracker(socketPath string) error {
@@ -1215,7 +1508,7 @@ func firecrackerBootArgs(bootMode, mode, payload, dataDevice string, waitForHost
 	return base
 }
 
-func imageRootFSBootArgs(command string, readOnly bool) string {
+func imageRootFSBootArgs(command string, readOnly bool, tty bool) string {
 	if command == "" {
 		command = "cat /etc/orca-image-ref"
 	}
@@ -1223,14 +1516,19 @@ func imageRootFSBootArgs(command string, readOnly bool) string {
 	if readOnly {
 		rootMode = "ro"
 	}
+	ttyArg := ""
+	if tty {
+		ttyArg = " orca.tty=1"
+	}
 	return fmt.Sprintf(
-		"root=/dev/vda %s console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.command_b64=%s",
+		"root=/dev/vda %s console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.command_b64=%s%s",
 		rootMode,
 		base64.StdEncoding.EncodeToString([]byte(command)),
+		ttyArg,
 	)
 }
 
-func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly bool, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string) error {
+func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly bool, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string, vcpuCount, memoryMiB int) error {
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
 		"boot_args":         bootArgs,
@@ -1259,8 +1557,8 @@ func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly 
 		"boot-source": bootSource,
 		"drives":      drives,
 		"machine-config": map[string]any{
-			"vcpu_count":        1,
-			"mem_size_mib":      128,
+			"vcpu_count":        vcpuCount,
+			"mem_size_mib":      memoryMiB,
 			"track_dirty_pages": false,
 		},
 		"logger": map[string]any{

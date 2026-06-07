@@ -15,6 +15,11 @@ import (
 func main() {
 	mountBasics()
 
+	if cmdlineValue("orca.tty") == "1" {
+		runTTY()
+		return
+	}
+
 	command := cmdlineValue("orca.command_b64")
 	if command != "" {
 		decoded, err := base64.StdEncoding.DecodeString(command)
@@ -67,6 +72,58 @@ func main() {
 		logf("image-rootfs ok")
 	} else {
 		logf("command failed exit_code=%d", exitCode)
+	}
+	reboot(exitCode)
+}
+
+func runTTY() {
+	env := os.Environ()
+	env = append(env, "TERM=xterm")
+	command := cmdlineValue("orca.command_b64")
+	if command != "" {
+		decoded, err := base64.StdEncoding.DecodeString(command)
+		if err != nil {
+			logf("invalid command encoding: %v", err)
+			reboot(2)
+			return
+		}
+		command = string(decoded)
+	}
+	logf("tty ready")
+	console, err := os.OpenFile("/dev/console", os.O_RDWR, 0)
+	if err != nil {
+		logf("open console failed: %v", err)
+		reboot(2)
+		return
+	}
+	defer console.Close()
+
+	var cmd *exec.Cmd
+	if command == "" {
+		cmd = exec.Command("/bin/sh", "-i")
+	} else {
+		logf("started env command=%q", command)
+		env = append(env, "ORCA_ENV_COMMAND="+command)
+		cmd = exec.Command("/bin/sh", "-lc", `(/bin/sh -lc "$ORCA_ENV_COMMAND" </dev/null) & exec /bin/sh -i`)
+	}
+	cmd.Env = env
+	cmd.Stdin = console
+	cmd.Stdout = console
+	cmd.Stderr = console
+	err = cmd.Run()
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+	}
+	sync()
+	if exitCode == 0 {
+		logf("tty closed exit_code=0")
+		logf("image-rootfs ok")
+	} else {
+		logf("tty closed exit_code=%d", exitCode)
 	}
 	reboot(exitCode)
 }
