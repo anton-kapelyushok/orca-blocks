@@ -83,6 +83,7 @@ type firecrackerTTYSession struct {
 	sessionID string
 	process   *firecrackerProcess
 	stopFn    func() (storage.Snapshot, error)
+	timingsFn func() string
 	mu        sync.Mutex
 	stopped   bool
 }
@@ -769,6 +770,9 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		ttySession := &firecrackerTTYSession{
 			sessionID: session.ID,
 			process:   run,
+			timingsFn: func() string {
+				return timingsJSON(timings)
+			},
 		}
 		ttySession.stopFn = func() (storage.Snapshot, error) {
 			_ = run.writeInput("sync\nexit\n")
@@ -1408,10 +1412,12 @@ func (a *app) ttyStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"session_id":         sessionID,
-		"snapshot_id":        snapshot.SnapshotID,
-		"manifest_key":       snapshot.ManifestKey,
-		"firecracker_output": orcaInitLines(tty.process.output()),
+		"session_id":          sessionID,
+		"snapshot_id":         snapshot.SnapshotID,
+		"latest_snapshot_id":  snapshot.SnapshotID,
+		"manifest_key":        snapshot.ManifestKey,
+		"firecracker_output":  orcaInitLines(tty.process.output()),
+		"firecracker_timings": tty.timingsFn(),
 	})
 }
 

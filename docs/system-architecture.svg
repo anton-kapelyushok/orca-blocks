@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Orca Blocks system architecture</title>
+  <desc id="desc">Architecture diagram showing clients, sandbox UI, control service, base image service, execution nodes, NBD and Firecracker runtimes, Postgres metadata, Toxiproxy, MinIO object storage, local caches, and the lazy block read/write path.</desc>
+  <defs>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      .bg { fill: #f7f8fb; }
+      .panel { fill: #ffffff; stroke: #c9d2df; stroke-width: 2; rx: 10; }
+      .panel-soft { fill: #f0f5f6; stroke: #bdd1d4; stroke-width: 2; rx: 10; }
+      .panel-warm { fill: #fff8ee; stroke: #e3bf88; stroke-width: 2; rx: 10; }
+      .panel-green { fill: #f1f8f2; stroke: #aecfb5; stroke-width: 2; rx: 10; }
+      .panel-blue { fill: #eef6ff; stroke: #a9c8e8; stroke-width: 2; rx: 10; }
+      .box { fill: #ffffff; stroke: #8392a5; stroke-width: 1.6; rx: 7; }
+      .box-blue { fill: #e8f3ff; stroke: #6d9ed1; stroke-width: 1.6; rx: 7; }
+      .box-green { fill: #eaf6ec; stroke: #79ae82; stroke-width: 1.6; rx: 7; }
+      .box-orange { fill: #fff1dd; stroke: #c89148; stroke-width: 1.6; rx: 7; }
+      .box-red { fill: #fff0ef; stroke: #cf7d73; stroke-width: 1.6; rx: 7; }
+      .box-gray { fill: #f3f5f7; stroke: #9aa6b4; stroke-width: 1.6; rx: 7; }
+      .title { font: 700 34px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17202e; }
+      .subtitle { font: 500 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #566579; }
+      .h2 { font: 700 19px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1d2a3a; }
+      .h3 { font: 700 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #243244; }
+      .label { font: 600 13px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #263447; }
+      .small { font: 500 11.5px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #59687a; }
+      .tiny { font: 500 10.5px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #667589; }
+      .mono { font: 600 11px "SFMono-Regular", Consolas, "Liberation Mono", monospace; fill: #4a586a; }
+      .arrow { fill: none; stroke: #4f6278; stroke-width: 2; marker-end: url(#arrow); }
+      .arrow-soft { fill: none; stroke: #79899d; stroke-width: 1.8; marker-end: url(#arrow-soft); }
+      .arrow-blue { fill: none; stroke: #236fae; stroke-width: 2.2; marker-end: url(#arrow-blue); }
+      .arrow-green { fill: none; stroke: #3f8b51; stroke-width: 2.2; marker-end: url(#arrow-green); }
+      .arrow-orange { fill: none; stroke: #b97824; stroke-width: 2.2; marker-end: url(#arrow-orange); }
+      .arrow-dashed { fill: none; stroke: #79899d; stroke-width: 1.8; stroke-dasharray: 6 5; marker-end: url(#arrow-soft); }
+      .flow-num { fill: #1f6fae; stroke: #ffffff; stroke-width: 2; }
+      .flow-text { font: 700 11px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4f6278"/>
+    </marker>
+    <marker id="arrow-soft" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#79899d"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#236fae"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f8b51"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b97824"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1120"/>
+
+  <text class="title" x="60" y="68">Orca Blocks System Architecture</text>
+  <text class="subtitle" x="60" y="96">Local Compose MVP for lazy block volumes, node-local caches, image-rootfs environments, NBD devices, and Firecracker sessions.</text>
+
+  <rect class="panel-blue" x="52" y="130" width="276" height="220"/>
+  <text class="h2" x="76" y="166">Clients</text>
+  <rect class="box" x="76" y="190" width="228" height="54"/>
+  <text class="h3" x="94" y="213">HTTP/API caller</text>
+  <text class="small" x="94" y="232">volumes, sessions, envs</text>
+  <rect class="box-blue" x="76" y="266" width="228" height="54"/>
+  <text class="h3" x="94" y="289">Sandbox UI</text>
+  <text class="small" x="94" y="308">build, start/resume, TTY</text>
+
+  <rect class="panel" x="390" y="130" width="320" height="340"/>
+  <text class="h2" x="414" y="166">Control Plane</text>
+  <rect class="box-blue" x="414" y="192" width="272" height="90"/>
+  <text class="h3" x="436" y="216">control-service</text>
+  <text class="small" x="436" y="238">creates volumes and environments</text>
+  <text class="small" x="436" y="257">schedules sessions by last_node</text>
+  <text class="mono" x="436" y="275">:18080 -&gt; :8080</text>
+  <rect class="box-orange" x="414" y="314" width="272" height="108"/>
+  <text class="h3" x="436" y="338">base-image-service</text>
+  <text class="small" x="436" y="360">materializes Docker images</text>
+  <text class="small" x="436" y="379">imports rootfs as a snapshot</text>
+  <text class="small" x="436" y="398">records BaseImage metadata</text>
+  <text class="mono" x="436" y="416">:18083 -&gt; :8080</text>
+
+  <rect class="panel-green" x="780" y="130" width="758" height="680"/>
+  <text class="h2" x="806" y="166">Execution Nodes</text>
+  <text class="small" x="1000" y="166">node-1 and node-2 are symmetric; each owns independent cache/session volumes and NBD ranges.</text>
+
+  <rect class="panel" x="806" y="194" width="704" height="570"/>
+  <text class="h2" x="832" y="230">node-service</text>
+  <text class="mono" x="944" y="230">node-1 :18081 / NBD :11081</text>
+  <text class="mono" x="944" y="248">node-2 :18082 / NBD :11082</text>
+
+  <rect class="box-blue" x="836" y="278" width="250" height="118"/>
+  <text class="h3" x="858" y="302">HTTP block API</text>
+  <text class="small" x="858" y="324">/sessions/start</text>
+  <text class="small" x="858" y="343">/read, /write, /commit, /stop</text>
+  <text class="small" x="858" y="362">/stats and TTY proxy targets</text>
+  <text class="small" x="858" y="381">runtime: http-block</text>
+
+  <rect class="box-green" x="1140" y="278" width="330" height="162"/>
+  <text class="h3" x="1162" y="302">pkg/storage.Backend</text>
+  <text class="small" x="1162" y="324">session table in memory</text>
+  <text class="small" x="1162" y="343">dirty overlay on disk</text>
+  <text class="small" x="1162" y="362">chunk math and zero-fill reads</text>
+  <text class="small" x="1162" y="381">cache lookup/fill and LRU eviction</text>
+  <text class="small" x="1162" y="400">commit uploads chunks and manifests</text>
+  <text class="small" x="1162" y="419">updates latest snapshot and last_node</text>
+
+  <rect class="box-orange" x="836" y="454" width="250" height="124"/>
+  <text class="h3" x="858" y="478">NBD server</text>
+  <text class="small" x="858" y="500">session export name = session id</text>
+  <text class="small" x="858" y="519">ReadAt, WriteAt, Flush</text>
+  <text class="small" x="858" y="538">commit_on_disconnect option</text>
+  <text class="small" x="858" y="557">pkg/nbd protocol server</text>
+
+  <rect class="box-red" x="836" y="610" width="250" height="118"/>
+  <text class="h3" x="858" y="634">Node-owned runtimes</text>
+  <text class="small" x="858" y="656">mounted-fs: /dev/nbdX + ext4</text>
+  <text class="small" x="858" y="675">firecracker: microVM + rootfs</text>
+  <text class="small" x="858" y="694">image-rootfs-run / TTY modes</text>
+  <text class="small" x="858" y="713">debug data under /sessions</text>
+
+  <rect class="box-gray" x="1140" y="470" width="150" height="116"/>
+  <text class="h3" x="1162" y="494">Local cache</text>
+  <text class="small" x="1162" y="516">/cache</text>
+  <text class="small" x="1162" y="535">immutable chunks</text>
+  <text class="small" x="1162" y="554">LRU bounded</text>
+  <text class="mono" x="1162" y="573">64 MiB/node</text>
+
+  <rect class="box-gray" x="1320" y="470" width="150" height="116"/>
+  <text class="h3" x="1342" y="494">Dirty overlay</text>
+  <text class="small" x="1342" y="516">/cache/dirty-</text>
+  <text class="small" x="1342" y="535">sessions/{id}</text>
+  <text class="small" x="1342" y="554">patched chunks</text>
+  <text class="small" x="1342" y="573">cleared on stop</text>
+
+  <rect class="box-gray" x="1140" y="616" width="330" height="112"/>
+  <text class="h3" x="1162" y="640">Host integration</text>
+  <text class="small" x="1162" y="662">privileged containers see /dev/nbd* and /dev/kvm</text>
+  <text class="small" x="1162" y="681">node-1 uses /dev/nbd0..7</text>
+  <text class="small" x="1162" y="700">node-2 uses /dev/nbd8..15</text>
+  <text class="small" x="1162" y="719">Firecracker assets mounted read-only</text>
+
+  <rect class="panel-warm" x="52" y="828" width="696" height="218"/>
+  <text class="h2" x="78" y="864">Durable Metadata</text>
+  <rect class="box-orange" x="78" y="894" width="282" height="108"/>
+  <text class="h3" x="100" y="918">Postgres</text>
+  <text class="small" x="100" y="940">volumes and latest snapshots</text>
+  <text class="small" x="100" y="959">snapshot records</text>
+  <text class="small" x="100" y="978">base images, envs, last_node hints</text>
+  <rect class="box" x="400" y="894" width="302" height="108"/>
+  <text class="h3" x="422" y="918">Repository interface</text>
+  <text class="small" x="422" y="940">storage.Repository backed by pgx</text>
+  <text class="small" x="422" y="959">shared by control, nodes, image builder</text>
+  <text class="small" x="422" y="978">initialized at service startup</text>
+
+  <rect class="panel-soft" x="806" y="828" width="704" height="218"/>
+  <text class="h2" x="832" y="864">Durable Object Storage</text>
+  <rect class="box" x="832" y="894" width="220" height="108"/>
+  <text class="h3" x="854" y="918">Toxiproxy</text>
+  <text class="small" x="854" y="940">S3 path latency/bandwidth tests</text>
+  <text class="small" x="854" y="959">proxy: minio-s3</text>
+  <text class="mono" x="854" y="978">:19000, control :18474</text>
+  <rect class="box-green" x="1110" y="894" width="360" height="108"/>
+  <text class="h3" x="1132" y="918">MinIO bucket: orca-blocks</text>
+  <text class="small" x="1132" y="940">immutable chunks at chunks/{sha256}</text>
+  <text class="small" x="1132" y="959">snapshot manifests at manifests/{snapshot_id}.json</text>
+  <text class="mono" x="1132" y="978">direct debug API :19002, console :19001</text>
+
+  <rect class="panel" x="52" y="390" width="650" height="380"/>
+  <text class="h2" x="78" y="426">Main Flows</text>
+  <rect class="box-blue" x="78" y="458" width="270" height="86"/>
+  <text class="h3" x="100" y="482">Volume/session flow</text>
+  <text class="small" x="100" y="504">control-service chooses a healthy node</text>
+  <text class="small" x="100" y="523">prefers volume.last_node when possible</text>
+  <rect class="box-orange" x="386" y="458" width="270" height="86"/>
+  <text class="h3" x="408" y="482">Image/environment flow</text>
+  <text class="small" x="408" y="504">base image snapshot seeds env volume</text>
+  <text class="small" x="408" y="523">Firecracker runs and commits env state</text>
+  <rect class="box-green" x="78" y="584" width="578" height="128"/>
+  <text class="h3" x="100" y="608">Lazy block read/write path</text>
+  <text class="small" x="100" y="630">Reads check dirty overlay, then local cache, then MinIO, then zero-fill.</text>
+  <text class="small" x="100" y="651">Writes materialize the base chunk, patch bytes, and store dirty chunks on disk.</text>
+  <text class="small" x="100" y="672">Commit hashes dirty chunks, uploads missing objects, writes a manifest, updates Postgres.</text>
+  <text class="small" x="100" y="693">Committed chunks stay in node-local cache to speed same-node resumes.</text>
+
+  <path class="arrow-blue" d="M 304 217 C 340 217 354 223 390 234"/>
+  <path class="arrow-blue" d="M 304 293 C 340 293 354 269 390 246"/>
+  <path class="arrow-blue" d="M 686 236 C 730 236 760 316 836 330"/>
+  <path class="arrow-orange" d="M 686 366 C 746 366 756 554 836 516"/>
+  <path class="arrow-blue" d="M 686 238 C 746 238 748 640 836 670"/>
+  <path class="arrow-green" d="M 1086 336 C 1110 336 1115 336 1140 336"/>
+  <path class="arrow-orange" d="M 961 454 L 961 396"/>
+  <path class="arrow-orange" d="M 961 578 L 961 610"/>
+  <path class="arrow-green" d="M 1290 410 L 1218 470"/>
+  <path class="arrow-green" d="M 1320 410 L 1394 470"/>
+  <path class="arrow-green" d="M 1470 360 C 1530 360 1530 948 1470 948"/>
+  <path class="arrow-soft" d="M 1215 586 L 1215 616"/>
+  <path class="arrow-soft" d="M 1320 670 L 1086 670"/>
+  <path class="arrow-soft" d="M 550 422 C 550 540 550 760 550 894"/>
+  <path class="arrow-soft" d="M 1278 440 C 1278 590 1288 744 1290 894"/>
+  <path class="arrow-soft" d="M 1052 948 L 1110 948"/>
+  <path class="arrow-dashed" d="M 414 360 C 314 610 280 760 220 894"/>
+  <path class="arrow-dashed" d="M 836 516 C 710 620 520 745 360 894"/>
+  <path class="arrow-dashed" d="M 1140 386 C 980 710 800 770 702 930"/>
+
+  <circle class="flow-num" cx="1130" cy="337" r="14"/>
+  <text class="flow-text" x="1127" y="341">1</text>
+  <circle class="flow-num" cx="1216" cy="461" r="14"/>
+  <text class="flow-text" x="1213" y="465">2</text>
+  <circle class="flow-num" cx="1396" cy="461" r="14"/>
+  <text class="flow-text" x="1393" y="465">3</text>
+  <circle class="flow-num" cx="1478" cy="948" r="14"/>
+  <text class="flow-text" x="1475" y="952">4</text>
+  <circle class="flow-num" cx="1074" cy="948" r="14"/>
+  <text class="flow-text" x="1071" y="952">5</text>
+
+  <rect class="box" x="1210" y="52" width="300" height="88"/>
+  <text class="h3" x="1230" y="77">Legend</text>
+  <line class="arrow-blue" x1="1230" y1="98" x2="1288" y2="98"/>
+  <text class="small" x="1300" y="102">HTTP control/API calls</text>
+  <line class="arrow-green" x1="1230" y1="120" x2="1288" y2="120"/>
+  <text class="small" x="1300" y="124">block data path</text>
+
+  <text class="tiny" x="60" y="1090">Generated from README.md, docker-compose.yml, cmd/* services, pkg/storage, and pkg/nbd. File: docs/system-architecture.svg</text>
+</svg>

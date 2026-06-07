@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,8 @@ type app struct {
 	controlURL string
 	client     *http.Client
 	tmpl       *template.Template
+	mu         sync.Mutex
+	sessions   map[string]envSession
 }
 
 type baseImage struct {
@@ -67,6 +70,29 @@ type runResult struct {
 	CacheSummary string
 }
 
+type envSession struct {
+	EnvID      string
+	SessionID  string
+	NodeID     string
+	ImageRef   string
+	SnapshotID string
+	Timings    []timing
+}
+
+type envPageData struct {
+	EnvID       string
+	SessionID   string
+	NodeID      string
+	CPUCount    string
+	MemoryMiB   string
+	ImageRef    string
+	SnapshotID  string
+	KeyTimings  []timing
+	AllTimings  []timing
+	RawTimings  string
+	HasRunStats bool
+}
+
 type timing struct {
 	Name       string `json:"name"`
 	DurationMS int64  `json:"duration_ms"`
@@ -79,6 +105,7 @@ func main() {
 		controlURL: strings.TrimRight(getenv("CONTROL_URL", "http://localhost:18080"), "/"),
 		client:     &http.Client{Timeout: 10 * time.Minute},
 		tmpl:       template.Must(template.New("page").Parse(pageHTML)),
+		sessions:   map[string]envSession{},
 	}
 
 	mux := http.NewServeMux()
@@ -151,6 +178,7 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
+	a.rememberEnvSession(out)
 	http.Redirect(w, r, envURL(out), http.StatusSeeOther)
 }
 
@@ -171,6 +199,7 @@ func (a *app) startTTY(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
+	a.rememberEnvSession(out)
 	http.Redirect(w, r, terminalURL(out), http.StatusSeeOther)
 }
 
@@ -190,6 +219,7 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
+	a.rememberEnvSession(out)
 	http.Redirect(w, r, envURL(out), http.StatusSeeOther)
 }
 
@@ -210,6 +240,7 @@ func (a *app) resumeTTY(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
+	a.rememberEnvSession(out)
 	http.Redirect(w, r, terminalURL(out), http.StatusSeeOther)
 }
 
@@ -219,16 +250,74 @@ func (a *app) terminal(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) env(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := map[string]string{
-		"EnvID":     r.URL.Query().Get("env_id"),
-		"SessionID": r.URL.Query().Get("session_id"),
-		"NodeID":    r.URL.Query().Get("node_id"),
-		"CPUCount":  withDefault(r.URL.Query().Get("cpu_count"), "1"),
-		"MemoryMiB": withDefault(r.URL.Query().Get("memory_mib"), "128"),
+	sessionID := r.URL.Query().Get("session_id")
+	stored := a.envSession(sessionID)
+	data := envPageData{
+		EnvID:       r.URL.Query().Get("env_id"),
+		SessionID:   sessionID,
+		NodeID:      r.URL.Query().Get("node_id"),
+		CPUCount:    withDefault(r.URL.Query().Get("cpu_count"), "1"),
+		MemoryMiB:   withDefault(r.URL.Query().Get("memory_mib"), "128"),
+		ImageRef:    stored.ImageRef,
+		SnapshotID:  stored.SnapshotID,
+		KeyTimings:  keyTimings(stored.Timings),
+		AllTimings:  stored.Timings,
+		HasRunStats: len(stored.Timings) > 0,
 	}
 	if err := template.Must(template.New("env").Parse(envHTML)).Execute(w, data); err != nil {
 		log.Printf("render env: %v", err)
 	}
+}
+
+func (a *app) rememberEnvSession(out map[string]any) {
+	sessionID := anyString(out["session_id"])
+	if sessionID == "" {
+		return
+	}
+	timings, rawTimings := parseTimings(asString(out["firecracker_timings"]))
+	_ = rawTimings
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.sessions[sessionID] = envSession{
+		EnvID:      anyString(out["env_id"]),
+		SessionID:  sessionID,
+		NodeID:     anyString(out["node_id"]),
+		ImageRef:   anyString(out["image_ref"]),
+		SnapshotID: firstNonEmpty(anyString(out["snapshot_id"]), anyString(out["latest_snapshot_id"])),
+		Timings:    timings,
+	}
+}
+
+func (a *app) envSession(sessionID string) envSession {
+	if sessionID == "" {
+		return envSession{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sessions[sessionID]
+}
+
+func keyTimings(timings []timing) []timing {
+	want := []string{
+		"attach_nbd_device",
+		"sideload_orca_init",
+		"run_firecracker",
+		"request_to_first_user_output",
+		"commit_snapshot",
+	}
+	byName := make(map[string]timing, len(timings))
+	for _, timing := range timings {
+		if _, ok := byName[timing.Name]; !ok {
+			byName[timing.Name] = timing
+		}
+	}
+	out := make([]timing, 0, len(want))
+	for _, name := range want {
+		if timing, ok := byName[name]; ok {
+			out = append(out, timing)
+		}
+	}
+	return out
 }
 
 func (a *app) ttyOutput(w http.ResponseWriter, r *http.Request) {
@@ -265,8 +354,35 @@ func (a *app) ttyPostText(w http.ResponseWriter, r *http.Request, action string)
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	if action == "stop" {
+		a.rememberTTYStop(r, out)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(out)
+}
+
+func (a *app) rememberTTYStop(r *http.Request, raw []byte) {
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return
+	}
+	sessionID := firstNonEmpty(anyString(out["session_id"]), r.FormValue("session_id"))
+	if sessionID == "" {
+		return
+	}
+	timings, _ := parseAnyTimings(out["firecracker_timings"])
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	stored := a.sessions[sessionID]
+	stored.EnvID = firstNonEmpty(stored.EnvID, r.FormValue("env_id"), anyString(out["env_id"]))
+	stored.SessionID = sessionID
+	stored.NodeID = firstNonEmpty(stored.NodeID, r.FormValue("node_id"), anyString(out["node_id"]))
+	stored.ImageRef = firstNonEmpty(stored.ImageRef, anyString(out["image_ref"]))
+	stored.SnapshotID = firstNonEmpty(anyString(out["snapshot_id"]), anyString(out["latest_snapshot_id"]), stored.SnapshotID)
+	if len(timings) > 0 {
+		stored.Timings = timings
+	}
+	a.sessions[sessionID] = stored
 }
 
 func envRequest(r *http.Request) map[string]any {
@@ -476,6 +592,9 @@ func parseAnyTimings(v any) ([]timing, string) {
 	if v == nil {
 		return nil, ""
 	}
+	if s, ok := v.(string); ok {
+		return parseTimings(s)
+	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Sprint(v)
@@ -519,6 +638,15 @@ func withDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func asInt64(v any) int64 {
@@ -794,6 +922,15 @@ const envHTML = `<!doctype html>
     dt { color: #6e7681; }
     dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    h2 { margin: 0; font-size: 13px; color: #dfe8f1; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 5px 0; border-bottom: 1px solid #30363d; text-align: left; vertical-align: top; }
+    th { color: #8b949e; font-weight: 650; }
+    td:last-child, th:last-child { text-align: right; }
+    details { color: #8b949e; }
+    summary { cursor: pointer; font-size: 12px; }
+    .ok { color: #7ee787; }
+    .err { color: #ffb4ab; }
     code { color: #9fc7ee; }
     @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; } aside { border-left: 0; border-top: 1px solid #30363d; } }
   </style>
@@ -811,10 +948,34 @@ const envHTML = `<!doctype html>
         <dl>
           <dt>session</dt><dd><code>{{.SessionID}}</code></dd>
           <dt>node</dt><dd><code>{{.NodeID}}</code></dd>
+          {{if .ImageRef}}<dt>image</dt><dd><code>{{.ImageRef}}</code></dd>{{end}}
+          {{if .SnapshotID}}<dt>snapshot</dt><dd><code>{{.SnapshotID}}</code></dd>{{end}}
           <dt>vCPUs</dt><dd><code>{{.CPUCount}}</code></dd>
           <dt>memory</dt><dd><code>{{.MemoryMiB}} MiB</code></dd>
         </dl>
         <button type="button" class="danger" id="stop">Stop / Commit</button>
+      </section>
+      <section class="panel">
+        <h2>Timings</h2>
+        <table>
+          <thead><tr><th>Step</th><th>Duration</th></tr></thead>
+          <tbody id="key-timings-body">
+          {{range .KeyTimings}}
+            <tr><td>{{.Name}}{{if .Error}} <span class="err">{{.Error}}</span>{{end}}</td><td class="{{if eq .Status "ok"}}ok{{else}}err{{end}}">{{.DurationMS}}ms</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+        <details>
+          <summary>All timing steps</summary>
+          <table>
+            <tbody id="all-timings-body">
+            {{range .AllTimings}}
+              <tr><td>{{.Name}}</td><td class="{{if eq .Status "ok"}}ok{{else}}err{{end}}">{{.DurationMS}}ms</td></tr>
+            {{end}}
+            </tbody>
+          </table>
+        </details>
+        <div id="timing-empty" style="color:#8b949e;font-size:12px;{{if .HasRunStats}}display:none{{end}}">Timings appear after creating or resuming an env from this page.</div>
       </section>
       <form class="panel" method="post" action="/resume" id="resumeForm">
         <input type="hidden" name="env_id" value="{{.EnvID}}">
@@ -845,6 +1006,16 @@ const envHTML = `<!doctype html>
     const status = document.getElementById("status");
     const stopButton = document.getElementById("stop");
     const resumeButton = document.getElementById("resumeButton");
+    const keyTimingsBody = document.getElementById("key-timings-body");
+    const allTimingsBody = document.getElementById("all-timings-body");
+    const timingEmpty = document.getElementById("timing-empty");
+    const keyTimingNames = [
+      "attach_nbd_device",
+      "sideload_orca_init",
+      "run_firecracker",
+      "request_to_first_user_output",
+      "commit_snapshot"
+    ];
     const term = new Terminal({
       cursorBlink: true,
       convertEol: false,
@@ -872,6 +1043,54 @@ const envHTML = `<!doctype html>
 
     function setStatus(text) {
       status.textContent = text;
+    }
+    function parseTimings(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          return [];
+        }
+      }
+      return [];
+    }
+    function timingClass(timing) {
+      return timing && timing.status === "ok" ? "ok" : "err";
+    }
+    function timingRow(timing) {
+      const tr = document.createElement("tr");
+      const name = document.createElement("td");
+      name.textContent = timing.name || "";
+      if (timing.error) {
+        const err = document.createElement("span");
+        err.className = "err";
+        err.textContent = " " + timing.error;
+        name.appendChild(err);
+      }
+      const duration = document.createElement("td");
+      duration.className = timingClass(timing);
+      duration.textContent = String(timing.duration_ms || 0) + "ms";
+      tr.appendChild(name);
+      tr.appendChild(duration);
+      return tr;
+    }
+    function renderTimings(raw) {
+      const timings = parseTimings(raw);
+      if (!timings.length) return;
+      const byName = new Map();
+      for (const timing of timings) {
+        if (timing && timing.name && !byName.has(timing.name)) byName.set(timing.name, timing);
+      }
+      keyTimingsBody.replaceChildren();
+      for (const name of keyTimingNames) {
+        if (byName.has(name)) keyTimingsBody.appendChild(timingRow(byName.get(name)));
+      }
+      allTimingsBody.replaceChildren();
+      for (const timing of timings) allTimingsBody.appendChild(timingRow(timing));
+      timingEmpty.style.display = "none";
     }
     async function postInput(data) {
       if (sessionClosed) return;
@@ -953,6 +1172,7 @@ const envHTML = `<!doctype html>
       const out = await res.json();
       setStatus("stopped snapshot " + (out.snapshot_id || ""));
       term.writeln("[orca] stopped snapshot " + (out.snapshot_id || ""));
+      renderTimings(out.firecracker_timings);
       resumeButton.disabled = false;
     }
     stopButton.addEventListener("click", () => {

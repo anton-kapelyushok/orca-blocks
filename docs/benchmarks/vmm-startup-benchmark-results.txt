@@ -1,0 +1,88 @@
+VMM Startup Benchmark Results
+date=2026-06-07
+host=DigitalOcean droplet root@178.128.247.74
+host_kernel=Linux 6.8.0-71-generic
+host_shape=1 vCPU, 1 GiB RAM
+image=alpine:3.22
+command=echo ORCA_STARTUP_MARKER
+rootfs_size=512 MiB ext4
+guest_memory=256 MiB
+guest_vcpus=1
+firecracker=1.16.0
+cloud_hypervisor=52.0
+qemu=8.2.2
+
+Purpose
+Measure runtime startup latency from host process launch until the first user-command output appears.
+This is the companion benchmark to the disk-read benchmark: instead of measuring raw block reads,
+it measures the smallest "run this image and emit output" path.
+
+Benchmark Shape
+- Docker baseline: docker run --rm --entrypoint /bin/sh alpine:3.22 -lc "echo ORCA_STARTUP_MARKER".
+- VM runtimes: an Alpine image is exported into an ext4 rootfs, current orca-init is sideloaded as
+  /init, and the VM boots root=/dev/vda.
+- The measured interval starts when the runtime process is launched and ends when the marker is
+  observed in stdout/serial output.
+- Rootfs build, rootfs copy, and orca-init sideload are setup work and are not included in
+  marker_ms.
+- QEMU microvm and QEMU q35 use the host Ubuntu kernel because the Firecracker CI kernel does not
+  bind QEMU microvm's command-line virtio-mmio block device.
+- Firecracker and Cloud Hypervisor use the Firecracker CI kernel.
+
+Results
+
+Cached rootfs pass:
+
+runtime              marker_ms   notes
+Docker               286         corrected one-shell Docker baseline
+Firecracker          806         Firecracker kernel, virtio-mmio rootfs
+Cloud Hypervisor     1009        Firecracker kernel, virtio-blk rootfs
+QEMU q35             1953        host Ubuntu kernel, virtio-blk-pci rootfs
+QEMU microvm         4737        host Ubuntu kernel, virtio-mmio rootfs
+
+Earlier full pass before Docker cleanup:
+
+runtime              marker_ms
+Docker               322
+Firecracker          806
+Cloud Hypervisor     1009
+QEMU q35             1953
+QEMU microvm         4737
+
+Initial rootfs-build pass:
+
+runtime              marker_ms
+Docker               335
+Firecracker          847
+Cloud Hypervisor     1325
+QEMU q35             1941
+QEMU microvm         4617
+
+Raw Logs
+- Cached full pass: ~/orca-bench/.tmp/vmm-startup/startup-20260607T135410Z
+- Corrected Docker-only pass: ~/orca-bench/.tmp/vmm-startup/startup-20260607T135455Z
+
+Interpretation
+For a tiny Alpine image-rootfs command, Firecracker is the fastest VM path in this setup, reaching
+first user output in about 0.8s. Cloud Hypervisor is close at about 1.0s. QEMU q35 is about 2.0s.
+QEMU microvm is slow here because it is using the stock Ubuntu host kernel, which takes about 4.7s
+to reach the user command in this direct-boot shape.
+
+This reverses part of the disk benchmark story: QEMU microvm has much better sequential disk
+throughput than Firecracker, but its current startup path is slower because of the kernel choice.
+The likely useful next experiment is a QEMU-compatible lean kernel, not a different rootfs.
+
+Reproduction
+Build and sync orca-init, then run on the Linux/KVM host:
+
+  ORCA_INIT_BIN=bin/orca-init \
+  STARTUP_IMAGE=alpine:3.22 \
+  STARTUP_COMMAND="echo ORCA_STARTUP_MARKER" \
+  ROOTFS_SIZE_MB=512 \
+  MEM_SIZE_MIB=256 \
+  VCPU_COUNT=1 \
+  ./scripts/measure-vmm-startup.py
+
+The script can limit runtimes with STARTUP_RUNTIMES, for example:
+
+  STARTUP_RUNTIMES=docker,firecracker ./scripts/measure-vmm-startup.py

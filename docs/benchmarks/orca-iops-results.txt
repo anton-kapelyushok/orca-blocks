@@ -1,0 +1,27 @@
+
+orca-iops run 2026-06-07T16:04:44Z
+control_url=http://localhost:18080
+image=orca-disk-bench:bench-1780848224
+base_image_id=base-15eb876f-53bb-40cd-a1d3-2ebac8bf75d7
+env_id=env-c73b712c-e750-4570-a929-ccfebba271ed
+size_mb=16 random_ops=512 io_depth=1 vcpus=1 memory_mib=512
+
+label	mode	mb_per_sec	iops	duration_ms	block_bytes	cache_hits	cache_misses	remote_fetches	run_firecracker_ms	request_to_first_user_output_ms
+node-1-read-1	sequential	21	21	738	1048576	273	0	0	2540	5560
+node-2-read-2	sequential	19	19	802	1048576	267	10	10	2658	5316
+node-2-read-3	sequential	20	20	764	1048576	276	0	0	2461	4706
+node-1-read-1	random	0	169	3027	4096	604	0	0	4855	7468
+node-2-read-2	random	0	172	2975	4096	628	0	0	4608	7226
+node-2-read-3	random	0	177	2892	4096	620	0	0	4487	7170
+
+orca-iops run 2026-06-07T16:05:36Z
+control_url=http://localhost:18080
+image=orca-disk-bench:bench-1780848291
+base_image_id=base-402893bd-c464-4e99-9c74-0424adcd4d1d
+env_id=env-f8f979e0-5b3d-495a-a3e2-51f1d4ea3b7e
+size_mb=16 random_ops=512 io_depth=1 vcpus=1 memory_mib=512
+
+label	mode	mb_per_sec	iops	duration_ms	block_bytes	cache_hits	cache_misses	remote_fetches	run_firecracker_ms	request_to_first_user_output_ms
+node-1-read-1	random	0	176	2897	4096	601	0	0	4727	7185
+node-2-read-2	random	0	147	3467	4096	611	9	9	5186	7902
+node-2-read-3	random	0	164	3105	4096	629	0	0	4783	7109

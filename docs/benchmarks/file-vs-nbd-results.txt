@@ -1,0 +1,22 @@
+
+file-vs-nbd run 2026-06-07T22:37:17Z
+data_file=.tmp/file-vs-nbd/bench.dat
+nbd_device=/dev/nbd2
+size_mb=256 random_ops=16384 io_depth=1 direct=false drop_caches=false
+
+target	mode	mb_per_sec	iops	duration_ms	block_bytes	ops	bytes_read	checksum
+file	sequential	2433	2433	105	1048576	256	268435456	6547463170405475338
+nbd	sequential	306	306	834	1048576	256	268435456	6547463170405475338
+file	random	1557	398737	41	4096	16384	67108864	3392266101605805862
+nbd	random	28	7291	2246	4096	16384	67108864	3392266101605805862
+
+file-vs-nbd run 2026-06-07T22:37:41Z
+data_file=.tmp/file-vs-nbd/bench.dat
+nbd_device=/dev/nbd2
+size_mb=256 random_ops=16384 io_depth=1 direct=true drop_caches=false
+
+target	mode	mb_per_sec	iops	duration_ms	block_bytes	ops	bytes_read	checksum
+file	sequential	403	403	633	1048576	256	268435456	6547463170405475338
+nbd	sequential	439	439	581	1048576	256	268435456	6547463170405475338
+file	random	7	1960	8358	4096	16384	67108864	3392266101605805862
+nbd	random	30	7740	2116	4096	16384	67108864	3392266101605805862

@@ -1,0 +1,55 @@
+# JetBrains Workspace Real-Env Timings
+
+Host: DigitalOcean Linux VM, 2 vCPU / 4 GiB RAM
+Guest/container limits: 1 vCPU / 2 GiB RAM
+Image: registry.jetbrains.team/p/fleet/docker-public/air-workspace-linux_x64:261.643
+Marker: "Join this workspace using URL:"
+
+## Docker Cold
+
+This includes the first image pull on the host, so it is not a pure runtime startup number.
+
+```text
+elapsed_to_join_ms=144185
+Dock HTTP Api listening                   132496ms
+Workspace Server listening                140990ms
+Version: 261.643                          144185ms
+Smart Mode: enabled                       144185ms
+Published to JetBrains Relay: true        144185ms
+Join this workspace using URL:            144185ms
+```
+
+## Docker Warm
+
+Image already present locally.
+
+```text
+elapsed_to_join_ms=22367
+Dock HTTP Api listening                     8473ms
+Workspace Server listening                 17030ms
+Version: 261.643                           22367ms
+Smart Mode: enabled                        22367ms
+Published to JetBrains Relay: true         22367ms
+Join this workspace using URL:             22367ms
+```
+
+## Firecracker Local
+
+Local Firecracker with ext4 rootfs file, no NBD.
+
+```text
+elapsed_to_join_ms=29021
+orca-init: build_time_utc                   2002ms
+orca-init: child reaper ready               2002ms
+orca-init: tty ready                        2002ms
+Dock HTTP Api listening                    15011ms
+Workspace Server listening                 24018ms
+Version: 261.643                           29021ms
+Smart Mode: enabled                        29021ms
+Published to JetBrains Relay: true         29021ms
+Join this workspace using URL:             29021ms
+```
+
+## Orca
+
+Skipped for now. The attempted 10 GiB base-image build exceeded the current control-service request timeout during base image import/commit, so the Orca runtime leg was not measured in this run.

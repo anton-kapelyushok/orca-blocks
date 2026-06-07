@@ -1,0 +1,22 @@
+
+firecracker-file-vs-nbd run 2026-06-07T22:52:05Z
+data_file=.tmp/firecracker-file-vs-nbd/bench.dat
+nbd_device=/dev/nbd2
+size_mb=256 random_ops=4096 io_depths=1 direct=false drop_caches=true
+
+target	mode	io_depth	mb_per_sec	iops	duration_ms	wall_ms	block_bytes	ops	bytes_read	checksum
+file	sequential	1	179	179	1422	3107	1048576	256	268435456	10454131386436132307
+nbd	sequential	1	101	101	2518	4064	1048576	256	268435456	10454131386436132307
+file	random	1	5	1470	2785	4549	4096	4096	16777216	4085861101163487048
+nbd	random	1	4	1087	3765	5316	4096	4096	16777216	4085861101163487048
+
+firecracker-file-vs-nbd run 2026-06-07T22:52:29Z
+data_file=.tmp/firecracker-file-vs-nbd/bench.dat
+nbd_device=/dev/nbd2
+size_mb=16 random_ops=512 io_depths=1 direct=false drop_caches=true
+
+target	mode	io_depth	mb_per_sec	iops	duration_ms	wall_ms	block_bytes	ops	bytes_read	checksum
+file	sequential	1	159	159	100	1925	1048576	16	16777216	11436611235799233722
+nbd	sequential	1	117	117	135	1683	1048576	16	16777216	11436611235799233722
+file	random	1	5	1427	358	1975	4096	512	2097152	1590318823782147512
+nbd	random	1	3	882	579	2224	4096	512	2097152	1590318823782147512

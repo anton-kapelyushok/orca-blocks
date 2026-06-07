@@ -1,0 +1,22 @@
+VMM Final Benchmark Summary
+date=2026-06-07
+host=DigitalOcean droplet root@178.128.247.74
+host_shape=1 vCPU, 1 GiB RAM
+
+runtime             sequential_io      random_io      startup_time
+Docker              1072 MB/s          11536 IOPS     286ms
+Firecracker         169 MB/s           4511 IOPS      806ms
+Cloud Hypervisor    164 MB/s           4653 IOPS      1009ms
+QEMU q35            456 MB/s           4732 IOPS      1953ms
+QEMU microvm        433-445 MB/s       4071 IOPS      4737ms
+
+Benchmark Shape
+- Sequential I/O: 128 MiB read with 1 MiB blocks.
+- Random I/O: 128 MiB total with 4 KiB reads.
+- Startup: alpine:3.22 image/rootfs until first user command output.
+- QEMU microvm sequential is listed as 433-445 MB/s because repeated reruns landed in that range
+  after one noisy low outlier.
+
+Source Detail Files
+- docs/benchmarks/vmm-disk-benchmark-results.txt
+- docs/benchmarks/vmm-startup-benchmark-results.txt
