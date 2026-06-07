@@ -125,6 +125,14 @@ log() {
   echo "orca-init: $*" > /dev/console
 }
 
+uptime_ms() {
+  awk '{ printf "%d", $1 * 1000 }' /proc/uptime 2>/dev/null || printf "0"
+}
+
+timing() {
+  echo "orca-timing: t_ms=$(uptime_ms) $*" > /dev/console
+}
+
 cmdline_value() {
   key="$1"
   for arg in $(cat /proc/cmdline); do
@@ -136,12 +144,16 @@ cmdline_value() {
 }
 
 mount -t proc proc /proc || true
+timing "mount_proc_done"
 mount -t sysfs sysfs /sys || true
+timing "mount_sys_done"
 mount -t devtmpfs devtmpfs /dev || true
 mkdir -p /run /tmp /sys/fs/cgroup /var/run /var/lib/docker /mnt/orca
 mount -t tmpfs tmpfs /run || true
+timing "mount_run_done"
 mount -t tmpfs tmpfs /tmp || true
 mount -t cgroup2 none /sys/fs/cgroup || true
+timing "mount_cgroup_done"
 
 MODE="$(cmdline_value orca.mode || echo smoke)"
 PAYLOAD="$(cmdline_value orca.payload || echo hello-from-firecracker)"
@@ -153,8 +165,10 @@ if [ -n "$PAYLOAD_B64" ]; then
 fi
 
 log "started mode=$MODE data_dev=$DATA_DEV"
+timing "init_ready mode=$MODE"
 
 start_dockerd() {
+  timing "dockerd_start"
   log "starting dockerd"
   dockerd \
     --host=unix:///var/run/docker.sock \
@@ -169,6 +183,7 @@ start_dockerd() {
   i=0
   while [ "$i" -lt 60 ]; do
     if docker version >/tmp/docker-version.log 2>&1; then
+      timing "dockerd_ready"
       log "dockerd ready"
       return 0
     fi
@@ -188,10 +203,13 @@ start_dockerd() {
 
 load_offline_image() {
   if docker image inspect orca/alpine-local:latest >/dev/null 2>&1; then
+    timing "image_already_loaded"
     return 0
   fi
+  timing "image_import_start"
   log "loading offline alpine image"
   gzip -dc /opt/orca/alpine-container-rootfs.tar.gz | docker import - orca/alpine-local:latest >/dev/console 2>&1
+  timing "image_import_done"
 }
 
 case "$MODE" in
@@ -199,18 +217,27 @@ case "$MODE" in
     log "smoke ok"
     ;;
   write)
+    timing "mkfs_start"
     log "formatting and mounting $DATA_DEV"
     mkfs.ext4 -F "$DATA_DEV" >/dev/console 2>&1
+    timing "mkfs_done"
     mkdir -p /mnt/orca
+    timing "mount_data_start"
     mount "$DATA_DEV" /mnt/orca
+    timing "mount_data_done"
     printf '%s\n' "$PAYLOAD" > /mnt/orca/proof.txt
+    timing "write_payload_done"
     sync
+    timing "sync_done"
     umount /mnt/orca
+    timing "umount_data_done"
     log "write ok"
     ;;
   read)
     mkdir -p /mnt/orca
+    timing "mount_data_ro_start"
     mount -t ext4 -o ro,noload "$DATA_DEV" /mnt/orca
+    timing "mount_data_ro_done"
     ACTUAL="$(cat /mnt/orca/proof.txt)"
     if [ "$ACTUAL" != "$PAYLOAD" ]; then
       log "proof mismatch expected_len=${#PAYLOAD} actual_len=${#ACTUAL}"
@@ -218,36 +245,51 @@ case "$MODE" in
       reboot -f
       exit 3
     fi
+    timing "read_payload_done"
     log "proof ok"
     umount /mnt/orca
+    timing "umount_data_done"
     log "read ok"
     ;;
   docker-smoke)
     start_dockerd
     load_offline_image
+    timing "mkfs_start"
     log "formatting and mounting $DATA_DEV"
     mkfs.ext4 -F "$DATA_DEV" >/dev/console 2>&1
+    timing "mkfs_done"
+    timing "mount_data_start"
     mount "$DATA_DEV" /mnt/orca
+    timing "mount_data_done"
+    timing "docker_run_start"
     log "running docker container"
     docker run --rm --network=none -e ORCA_PAYLOAD="$PAYLOAD" -v /mnt/orca:/mnt/orca orca/alpine-local:latest \
       /bin/sh -c 'printf "%s\n" "$ORCA_PAYLOAD" > /mnt/orca/proof.txt && echo "container write ok"' >/tmp/docker-run.log 2>&1
+    timing "docker_run_done"
     cat /tmp/docker-run.log >/dev/console 2>&1 || true
     log "docker container ok"
     sync
+    timing "sync_done"
     umount /mnt/orca
+    timing "umount_data_done"
     log "docker-smoke ok"
     ;;
   docker-read)
     start_dockerd
     load_offline_image
     log "mounting $DATA_DEV read-only"
+    timing "mount_data_ro_start"
     mount -t ext4 -o ro,noload "$DATA_DEV" /mnt/orca
+    timing "mount_data_ro_done"
+    timing "docker_run_start"
     log "running docker read container"
     docker run --rm --network=none -e ORCA_PAYLOAD="$PAYLOAD" -v /mnt/orca:/mnt/orca:ro orca/alpine-local:latest \
       /bin/sh -c 'actual="$(cat /mnt/orca/proof.txt)"; test "$actual" = "$ORCA_PAYLOAD" && echo "container read ok"' >/tmp/docker-run.log 2>&1
+    timing "docker_run_done"
     cat /tmp/docker-run.log >/dev/console 2>&1 || true
     log "docker container ok"
     umount /mnt/orca
+    timing "umount_data_done"
     log "docker-read ok"
     ;;
   *)
@@ -264,6 +306,7 @@ if [ "$AFTER_OK" = "wait" ]; then
   done
 fi
 
+timing "reboot_start"
 reboot -f
 INIT
 sudo chmod +x "$MOUNT_DIR/init"

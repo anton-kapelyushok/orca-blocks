@@ -611,7 +611,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		return resp, nil
 	}
 
-	createMemorySnapshot := mode == "write" && commitAfterRun && req.SaveMemory
+	createMemorySnapshot := firecrackerModeWritesVolume(mode) && commitAfterRun && req.SaveMemory
 	bootArgs := firecrackerBootArgs(firecrackerBootMode, mode, payload, guestDataDevice, createMemorySnapshot)
 	started = time.Now()
 	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, initrdPath, device, false, logPath, bootArgs); err != nil {
@@ -666,7 +666,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		return nil, fmt.Errorf("firecracker failed after guest success: %w: %s", err, tail(serial, 4096))
 	}
 	serial := run.output()
-	if rootfsPath != "" {
+	if rootfsPath != "" && !createMemorySnapshot {
 		started = time.Now()
 		if err := os.Remove(rootfsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			record("remove_rootfs_copy", started, err)
@@ -1266,7 +1266,7 @@ func writeFirecrackerRestoreConfig(path, vmStatePath, memPath, dataDevice, logPa
 func orcaInitLines(s string) string {
 	var lines []string
 	for _, line := range strings.Split(s, "\n") {
-		if strings.Contains(line, "orca-init:") {
+		if strings.Contains(line, "orca-init:") || strings.Contains(line, "orca-timing:") {
 			lines = append(lines, strings.TrimSpace(line))
 		}
 	}

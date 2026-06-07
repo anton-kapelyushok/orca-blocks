@@ -178,6 +178,56 @@ func TestFirecrackerDockerSmoke(t *testing.T) {
 	stopSession(t, readNode2)
 }
 
+func TestFirecrackerDockerMemoryRestore(t *testing.T) {
+	if getenv("FIRECRACKER_DOCKER_TEST", "") != "true" {
+		t.Skip("set FIRECRACKER_DOCKER_TEST=true and run Compose with FIRECRACKER_BOOT_MODE=rootfs")
+	}
+	if getenv("FIRECRACKER_BOOT_MODE", "") != "rootfs" {
+		t.Skip("docker memory restore requires FIRECRACKER_BOOT_MODE=rootfs")
+	}
+
+	control := getenv("CONTROL_URL", "http://localhost:18080")
+	t.Logf("waiting for control service at %s", control)
+	waitFor(t, control+"/healthz")
+
+	volumeID := fmt.Sprintf("fc-docker-memory-itest-%d", time.Now().UnixNano())
+	payload := fmt.Sprintf("docker memory restore payload %d", time.Now().UnixNano())
+	t.Logf("creating storage volume %s", volumeID)
+	var volume map[string]any
+	postJSON(t, control+"/volumes/create", map[string]any{
+		"volume_id":  volumeID,
+		"size_bytes": 64 * 1024 * 1024,
+		"chunk_size": 1024 * 1024,
+	}, &volume)
+	t.Logf("created docker memory test volume: %+v", volume)
+
+	t.Log("starting firecracker docker-smoke session on node-1 with memory snapshot explicitly enabled")
+	writeSession := startFirecrackerSessionWithMemorySnapshot(t, control, volumeID, "node-1", "docker-smoke", payload, true)
+	t.Logf("node-1 docker memory session=%s output=%q snapshot=%s work_dir=%s", writeSession["session_id"], writeSession["firecracker_output"], writeSession["snapshot_id"], writeSession["firecracker_work_dir"])
+	logFirecrackerTimings(t, "node-1 docker memory write", writeSession)
+	assertFirecrackerSessionData(t, "node-1", writeSession)
+	assertFirecrackerMemorySnapshot(t, "node-1", writeSession)
+	assertTimingPresent(t, "node-1 docker memory write", writeSession, "create_memory_snapshot")
+	if writeSession["snapshot_id"] == "" {
+		t.Fatalf("expected docker-smoke memory session to commit a snapshot: %+v", writeSession)
+	}
+	if !strings.Contains(writeSession["firecracker_output"], "orca-init: dockerd ready") {
+		t.Fatalf("firecracker docker output did not confirm dockerd readiness: %+v", writeSession)
+	}
+	if !strings.Contains(writeSession["firecracker_output"], "orca-init: docker-smoke ok") {
+		t.Fatalf("firecracker docker output did not confirm docker-smoke completion: %+v", writeSession)
+	}
+
+	t.Log("restoring node-1 docker firecracker memory snapshot")
+	restoreSession := restoreFirecrackerSession(t, control, volumeID, "node-1", writeSession)
+	t.Logf("node-1 restored docker firecracker session=%s work_dir=%s restored_mem=%s restored_vmstate=%s",
+		restoreSession["session_id"], restoreSession["firecracker_work_dir"], restoreSession["restored_memory_snapshot"], restoreSession["restored_vmstate_snapshot"])
+	logFirecrackerTimings(t, "node-1 docker memory restore", restoreSession)
+	assertFirecrackerSessionData(t, "node-1", restoreSession)
+	assertTimingPresent(t, "node-1 docker memory restore", restoreSession, "restore_memory_snapshot")
+	stopSession(t, restoreSession)
+}
+
 func startFirecrackerSession(t *testing.T, control, volumeID, node, mode, payload string, commitAfterRun bool) map[string]string {
 	t.Helper()
 	var out map[string]string
