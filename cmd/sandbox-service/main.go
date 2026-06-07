@@ -617,7 +617,7 @@ const pageHTML = `<!doctype html>
               <input name="base_image_id" placeholder="optional">
             </div>
           </div>
-          <label>Env command</label>
+          <label>Orca run command</label>
           <textarea name="command">sleep infinity</textarea>
           <div class="thirds">
             <div>
@@ -642,7 +642,7 @@ const pageHTML = `<!doctype html>
         <form method="post" action="/resume">
           <label>Env id</label>
           <input name="env_id" placeholder="env-...">
-          <label>Env command</label>
+          <label>Orca run command</label>
           <textarea name="command">sleep infinity</textarea>
           <div class="thirds">
             <div>
@@ -818,7 +818,7 @@ const envHTML = `<!doctype html>
       </section>
       <form class="panel" method="post" action="/resume" id="resumeForm">
         <input type="hidden" name="env_id" value="{{.EnvID}}">
-        <label>Resume Command</label>
+        <label>Orca run command</label>
         <textarea name="command">sleep infinity</textarea>
         <div class="row">
           <div>

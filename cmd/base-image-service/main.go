@@ -23,7 +23,6 @@ type app struct {
 	backend          *storage.Backend
 	repo             storage.Repository
 	workDir          string
-	orcaInitPath     string
 	containerRuntime string
 	defaultRootFSMB  int64
 }
@@ -92,7 +91,6 @@ func main() {
 		backend:          storage.NewBackend(getenv("NODE_ID", "base-image-service"), repo, store, cache),
 		repo:             repo,
 		workDir:          getenv("WORK_DIR", "/work"),
-		orcaInitPath:     getenv("ORCA_INIT_BIN", "/orca-init"),
 		containerRuntime: getenv("CONTAINER_RUNTIME", "docker"),
 		defaultRootFSMB:  mustInt64(getenv("ROOTFS_SIZE_MB", "2048")),
 	}
@@ -177,6 +175,11 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 			VolumeID:        volume.VolumeID,
 			SnapshotID:      snapshot.SnapshotID,
 			RootFSSizeBytes: info.Size(),
+			Env:             result.config.Env,
+			WorkingDir:      result.config.WorkingDir,
+			Entrypoint:      result.config.Entrypoint,
+			Cmd:             result.config.Cmd,
+			User:            result.config.User,
 		})
 		return err
 	}); err != nil {
@@ -193,6 +196,11 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		"volume_id":         baseImage.VolumeID,
 		"snapshot_id":       baseImage.SnapshotID,
 		"rootfs_size_bytes": baseImage.RootFSSizeBytes,
+		"env":               baseImage.Env,
+		"working_dir":       baseImage.WorkingDir,
+		"entrypoint":        baseImage.Entrypoint,
+		"cmd":               baseImage.Cmd,
+		"user":              baseImage.User,
 		"duration_ms":       totalMS,
 		"build_timings":     build.steps,
 	})
@@ -225,6 +233,15 @@ type materializedImage struct {
 	dir        string
 	rootfsPath string
 	digest     string
+	config     imageConfig
+}
+
+type imageConfig struct {
+	Env        []string `json:"env,omitempty"`
+	WorkingDir string   `json:"working_dir,omitempty"`
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	Cmd        []string `json:"cmd,omitempty"`
+	User       string   `json:"user,omitempty"`
 }
 
 func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB int64, build *buildLogger) (materializedImage, error) {
@@ -249,6 +266,10 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	mountDir := filepath.Join(dir, "mnt")
 
 	if err := build.step("pull_image", func() error {
+		if _, err := output(ctx, a.containerRuntime, "image", "inspect", image); err == nil {
+			log.Printf("buildImage image=%s already available locally", image)
+			return nil
+		}
 		return run(ctx, a.containerRuntime, "pull", image)
 	}); err != nil {
 		return materializedImage{}, err
@@ -267,6 +288,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 		return materializedImage{}, err
 	}
 	digest := imageDigest(inspect)
+	config := dockerImageConfig(inspect)
 
 	var cidRaw []byte
 	if err := build.step("create_container", func() error {
@@ -336,11 +358,6 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	}); err != nil {
 		return materializedImage{}, err
 	}
-	if err := build.step("install_orca_init", func() error {
-		return copyFile(a.orcaInitPath, filepath.Join(mountDir, "init"), 0o755)
-	}); err != nil {
-		return materializedImage{}, err
-	}
 	if err := build.step("write_guest_image_inspect", func() error {
 		return copyFile(inspectPath, filepath.Join(mountDir, "etc", "orca-image-inspect.json"), 0o644)
 	}); err != nil {
@@ -351,7 +368,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	}); err != nil {
 		return materializedImage{}, err
 	}
-	meta := fmt.Sprintf("image=%s\nrootfs_size_mb=%d\ncontainer_runtime=%s\n", image, rootFSSizeMB, a.containerRuntime)
+	meta := fmt.Sprintf("image=%s\nrootfs_size_mb=%d\ncontainer_runtime=%s\nworkdir=%s\nuser=%s\n", image, rootFSSizeMB, a.containerRuntime, config.WorkingDir, config.User)
 	if err := build.step("write_guest_rootfs_meta", func() error {
 		return os.WriteFile(filepath.Join(mountDir, "etc", "orca-rootfs-from-image"), []byte(meta), 0o644)
 	}); err != nil {
@@ -365,7 +382,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	}
 	mounted = false
 	cleanupOnError = false
-	return materializedImage{dir: dir, rootfsPath: rootfsPath, digest: digest}, nil
+	return materializedImage{dir: dir, rootfsPath: rootfsPath, digest: digest, config: config}, nil
 }
 
 func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.File) (storage.Snapshot, error) {
@@ -423,6 +440,29 @@ func imageDigest(inspect []byte) string {
 		}
 	}
 	return images[0].ID
+}
+
+func dockerImageConfig(inspect []byte) imageConfig {
+	var images []struct {
+		Config struct {
+			Env        []string `json:"Env"`
+			WorkingDir string   `json:"WorkingDir"`
+			Entrypoint []string `json:"Entrypoint"`
+			Cmd        []string `json:"Cmd"`
+			User       string   `json:"User"`
+		} `json:"Config"`
+	}
+	if err := json.Unmarshal(inspect, &images); err != nil || len(images) == 0 {
+		return imageConfig{}
+	}
+	cfg := images[0].Config
+	return imageConfig{
+		Env:        append([]string(nil), cfg.Env...),
+		WorkingDir: cfg.WorkingDir,
+		Entrypoint: append([]string(nil), cfg.Entrypoint...),
+		Cmd:        append([]string(nil), cfg.Cmd...),
+		User:       cfg.User,
+	}
 }
 
 func truncateFile(path string, size int64) error {

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -59,8 +60,19 @@ CREATE TABLE IF NOT EXISTS base_images (
   volume_id TEXT NOT NULL REFERENCES volumes(volume_id),
   snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
   rootfs_size_bytes BIGINT NOT NULL,
+  env_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  working_dir TEXT NOT NULL DEFAULT '',
+  entrypoint_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  cmd_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  user_name TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE base_images ADD COLUMN IF NOT EXISTS env_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE base_images ADD COLUMN IF NOT EXISTS working_dir TEXT NOT NULL DEFAULT '';
+ALTER TABLE base_images ADD COLUMN IF NOT EXISTS entrypoint_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE base_images ADD COLUMN IF NOT EXISTS cmd_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE base_images ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS base_images_image_ref_idx ON base_images(image_ref);
 CREATE INDEX IF NOT EXISTS base_images_image_digest_idx ON base_images(image_digest);
@@ -163,15 +175,27 @@ SELECT snapshot_id, volume_id, manifest_key FROM snapshots WHERE snapshot_id = $
 }
 
 func (r *PostgresRepo) CreateBaseImage(ctx context.Context, image BaseImage) (BaseImage, error) {
+	envJSON, err := json.Marshal(image.Env)
+	if err != nil {
+		return BaseImage{}, err
+	}
+	entrypointJSON, err := json.Marshal(image.Entrypoint)
+	if err != nil {
+		return BaseImage{}, err
+	}
+	cmdJSON, err := json.Marshal(image.Cmd)
+	if err != nil {
+		return BaseImage{}, err
+	}
 	row := r.pool.QueryRow(ctx, `
-INSERT INTO base_images (base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO base_images (base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes, env_json, working_dir, entrypoint_json, cmd_json, user_name)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (base_image_id) DO NOTHING
-RETURNING base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes`,
-		image.BaseImageID, image.ImageRef, image.ImageDigest, image.VolumeID, image.SnapshotID, image.RootFSSizeBytes)
-	var out BaseImage
-	if err := row.Scan(&out.BaseImageID, &out.ImageRef, &out.ImageDigest, &out.VolumeID, &out.SnapshotID, &out.RootFSSizeBytes); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+RETURNING base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes, env_json, working_dir, entrypoint_json, cmd_json, user_name`,
+		image.BaseImageID, image.ImageRef, image.ImageDigest, image.VolumeID, image.SnapshotID, image.RootFSSizeBytes, envJSON, image.WorkingDir, entrypointJSON, cmdJSON, image.User)
+	out, err := scanBaseImage(row)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
 			return r.GetBaseImage(ctx, image.BaseImageID)
 		}
 		return BaseImage{}, err
@@ -181,14 +205,14 @@ RETURNING base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs
 
 func (r *PostgresRepo) GetBaseImage(ctx context.Context, baseImageID string) (BaseImage, error) {
 	row := r.pool.QueryRow(ctx, `
-SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes, env_json, working_dir, entrypoint_json, cmd_json, user_name
 FROM base_images WHERE base_image_id = $1`, baseImageID)
 	return scanBaseImage(row)
 }
 
 func (r *PostgresRepo) GetBaseImageByRef(ctx context.Context, imageRef string) (BaseImage, error) {
 	row := r.pool.QueryRow(ctx, `
-SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes, env_json, working_dir, entrypoint_json, cmd_json, user_name
 FROM base_images WHERE image_ref = $1
 ORDER BY created_at DESC
 LIMIT 1`, imageRef)
@@ -197,7 +221,7 @@ LIMIT 1`, imageRef)
 
 func (r *PostgresRepo) ListBaseImages(ctx context.Context) ([]BaseImage, error) {
 	rows, err := r.pool.Query(ctx, `
-SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes, env_json, working_dir, entrypoint_json, cmd_json, user_name
 FROM base_images
 ORDER BY created_at DESC`)
 	if err != nil {
@@ -206,8 +230,8 @@ ORDER BY created_at DESC`)
 	defer rows.Close()
 	var out []BaseImage
 	for rows.Next() {
-		var image BaseImage
-		if err := rows.Scan(&image.BaseImageID, &image.ImageRef, &image.ImageDigest, &image.VolumeID, &image.SnapshotID, &image.RootFSSizeBytes); err != nil {
+		image, err := scanBaseImage(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, image)
@@ -224,11 +248,21 @@ type scanner interface {
 
 func scanBaseImage(row scanner) (BaseImage, error) {
 	var out BaseImage
-	if err := row.Scan(&out.BaseImageID, &out.ImageRef, &out.ImageDigest, &out.VolumeID, &out.SnapshotID, &out.RootFSSizeBytes); err != nil {
+	var envJSON, entrypointJSON, cmdJSON []byte
+	if err := row.Scan(&out.BaseImageID, &out.ImageRef, &out.ImageDigest, &out.VolumeID, &out.SnapshotID, &out.RootFSSizeBytes, &envJSON, &out.WorkingDir, &entrypointJSON, &cmdJSON, &out.User); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return BaseImage{}, ErrNotFound
 		}
 		return BaseImage{}, err
+	}
+	if len(envJSON) > 0 {
+		_ = json.Unmarshal(envJSON, &out.Env)
+	}
+	if len(entrypointJSON) > 0 {
+		_ = json.Unmarshal(entrypointJSON, &out.Entrypoint)
+	}
+	if len(cmdJSON) > 0 {
+		_ = json.Unmarshal(cmdJSON, &out.Cmd)
 	}
 	return out, nil
 }

@@ -1,0 +1,109 @@
+VMM Disk Benchmark Results
+date=2026-06-07
+host=DigitalOcean droplet root@178.128.247.74
+host_kernel=Linux 6.8.0-71-generic
+host_shape=1 vCPU, 1 GiB RAM
+benchmark_binary=cmd/disk-bench
+data_file_size=128 MiB
+guest_memory=256 MiB
+guest_vcpus=1
+guest_kernel=Firecracker CI vmlinux-6.1.172
+firecracker=1.16.0
+cloud_hypervisor=52.0
+qemu=8.2.2
+latest_full_rerun=2026-06-07T13:44:55Z
+latest_full_rerun_remote_dir=~/orca-bench/.tmp/vmm-bench/full-rerun-20260607T134455Z
+
+Purpose
+Compare the same tiny disk benchmark across host Docker and KVM VMMs to understand whether
+Firecracker block I/O behavior is VMM-specific or a general guest virtio-blk cost.
+
+Benchmark Shape
+- Sequential: read 128 MiB with 1 MiB reads, buffered, iodepth=1.
+- Random: read 128 MiB total with 32768 random 4 KiB reads, buffered, iodepth=1.
+- Backing file: raw host file at ~/orca-bench/.tmp/disk-bench/bench-128mib.dat.
+- Guest disk path: /dev/vda.
+- Docker path: bind-mounted file /bench.dat.
+- QEMU microvm note: QEMU -M microvm works on this host, but the kernel matters. With the
+  Firecracker CI vmlinux-6.1.172 and ACPI disabled, the guest reaches /init but does not bind the
+  QEMU virtio-mmio block device, so /dev/vda never appears. A probe initramfs showed no virtio
+  block device in /proc/partitions. With the host Ubuntu 6.8.0-71-generic kernel, which has
+  CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y, QEMU microvm exposes /dev/vda and the benchmark runs.
+
+Results
+
+Sequential, 128 MiB, 1 MiB reads:
+
+runtime                 duration_ms   MB/s   notes
+Docker host file        119           1072   baseline
+Firecracker virtio-blk  753           169    built-in virtio-blk
+QEMU microvm virtio-blk  287           445    host Ubuntu kernel, acpi=off, virtio-mmio
+QEMU q35 virtio-blk     280           456    host Ubuntu kernel, virtio-blk-pci
+Cloud Hypervisor        779           164    virtio-blk
+
+Random, 128 MiB total, 4 KiB reads:
+
+runtime                 duration_ms   MB/s   IOPS
+Docker host file        2840          45     11536
+Firecracker virtio-blk  7263          17     4511
+QEMU microvm virtio-blk  8048          15     4071   host Ubuntu kernel, acpi=off, virtio-mmio
+QEMU q35 virtio-blk     6923          18     4732   host Ubuntu kernel, virtio-blk-pci
+Cloud Hypervisor        7042          18     4653
+
+Host Ubuntu Kernel QEMU Startup Wall Times
+- QEMU microvm sequential run wall_ms: 4911 in the confirmation run.
+- QEMU q35 sequential run wall_ms: 2356 in the full rerun.
+- These include booting a stock Ubuntu kernel into a tiny initramfs and then running the read test.
+  They are not optimized guest startup numbers.
+
+Rerun Notes
+- The first full-pass QEMU microvm sequential row was noisy: 476ms / 268 MB/s. A direct rerun
+  immediately after the full pass returned 287ms / 445 MB/s, matching the earlier 412-449 MB/s
+  microvm checks, so the table uses the confirmed value.
+- Cloud Hypervisor produced DISK_BENCH_RESULT quickly, then the guest reboot/panic path kept the
+  process alive until the wrapper timeout. The table uses the guest benchmark duration, not that
+  wrapper wall time.
+
+Earlier Same-Host Knob Checks
+
+Firecracker sequential, 128 MiB, 1 MiB reads:
+- io_engine=default: about 178 MB/s
+- io_engine=Sync: about 172 MB/s
+- io_engine=Async: about 165 MB/s
+- O_DIRECT=true: about 284 MB/s
+- read_ahead_kb=0: about 30 MB/s
+- read_ahead_kb=128..16384: about 176-189 MB/s
+
+Firecracker iodepth:
+- Sequential iodepth 1..16 did not improve Firecracker; it stayed around 150-180 MB/s.
+- Random iodepth improved Firecracker from about 4.6k IOPS to about 7.9k IOPS, but Docker
+  scaled to about 61k IOPS.
+
+Interpretation
+The VirtualBox development VM was not representative: Firecracker buffered sequential reads
+were about 25 MB/s there, but about 180 MB/s on real KVM.
+
+On real KVM, Firecracker and Cloud Hypervisor are similar for this benchmark. Real QEMU microvm is
+materially faster for sequential buffered reads when run with the host Ubuntu kernel, but its random
+4 KiB read result is similar to Firecracker. QEMU q35 is similar to QEMU microvm on sequential reads
+in the same host-kernel run, and slightly better on random reads.
+
+The remaining gap versus Docker is still significant for cold guest reads:
+- Firecracker sequential is about 6.1x slower than Docker.
+- QEMU microvm sequential is about 2.4x slower than Docker.
+- Firecracker random is about 2.6x slower than Docker.
+- QEMU microvm random is about 2.8x slower than Docker.
+
+The strongest current conclusion is that cold guest block/page-cache reads still matter for
+disk-only cold start and disk-only resume. Firecracker is not catastrophically broken on real
+KVM, but Docker host-file access is still much faster for this synthetic workload. QEMU microvm
+is worth keeping in the comparison set, but the kernel/device-discovery combination must match
+the VMM.
+
+Reproduction Helpers
+- cmd/vmm-probe prints guest-visible block devices, command line, and dmesg from a minimal
+  initramfs. It was used to confirm that Firecracker exposes vda with this kernel while QEMU
+  microvm plus the Firecracker CI kernel does not.
+- scripts/measure-qemu-disk.py runs QEMU microvm or QEMU q35 against the same disk-bench binary:
+  QEMU_MACHINE=microvm ./scripts/measure-qemu-disk.py
+  QEMU_MACHINE=q35 ./scripts/measure-qemu-disk.py

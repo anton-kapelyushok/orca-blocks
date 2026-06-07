@@ -124,22 +124,24 @@ func (a *app) getVolume(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Runtime            string `json:"runtime"`
-		VolumeID           string `json:"volume_id"`
-		ForceNode          string `json:"force_node"`
-		Frontend           string `json:"frontend"`
-		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
-		Format             bool   `json:"format"`
-		FSType             string `json:"fs_type"`
-		FirecrackerMode    string `json:"firecracker_mode"`
-		FirecrackerPayload string `json:"firecracker_payload"`
-		VCPUCount          int    `json:"cpu_count"`
-		MemoryMiB          int    `json:"memory_mib"`
-		CommitAfterRun     *bool  `json:"commit_after_run"`
-		SaveMemory         bool   `json:"save_memory_snapshot"`
-		RestoreMemory      string `json:"restore_memory_snapshot_path"`
-		RestoreVMState     string `json:"restore_vmstate_snapshot_path"`
-		RestoreDevice      string `json:"restore_firecracker_device"`
+		Runtime            string   `json:"runtime"`
+		VolumeID           string   `json:"volume_id"`
+		ForceNode          string   `json:"force_node"`
+		Frontend           string   `json:"frontend"`
+		CommitOnDisconnect *bool    `json:"commit_on_disconnect"`
+		Format             bool     `json:"format"`
+		FSType             string   `json:"fs_type"`
+		FirecrackerMode    string   `json:"firecracker_mode"`
+		FirecrackerPayload string   `json:"firecracker_payload"`
+		VCPUCount          int      `json:"cpu_count"`
+		MemoryMiB          int      `json:"memory_mib"`
+		ImageEnv           []string `json:"image_env"`
+		ImageWorkingDir    string   `json:"image_working_dir"`
+		CommitAfterRun     *bool    `json:"commit_after_run"`
+		SaveMemory         bool     `json:"save_memory_snapshot"`
+		RestoreMemory      string   `json:"restore_memory_snapshot_path"`
+		RestoreVMState     string   `json:"restore_vmstate_snapshot_path"`
+		RestoreDevice      string   `json:"restore_firecracker_device"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -176,6 +178,12 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MemoryMiB > 0 {
 		startReq["memory_mib"] = req.MemoryMiB
+	}
+	if len(req.ImageEnv) > 0 {
+		startReq["image_env"] = req.ImageEnv
+	}
+	if req.ImageWorkingDir != "" {
+		startReq["image_working_dir"] = req.ImageWorkingDir
 	}
 	if req.CommitAfterRun != nil {
 		startReq["commit_after_run"] = *req.CommitAfterRun
@@ -272,14 +280,14 @@ func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	command := firstNonEmpty(req.Command, req.Cmd)
-	if command == "" && !req.TTY {
-		http.Error(w, "command is required", http.StatusBadRequest)
-		return
-	}
+	command := strings.TrimSpace(firstNonEmpty(req.Command, req.Cmd))
 	base, err := a.resolveBaseImage(r.Context(), req.BaseImageID, req.Image)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if command == "" && !req.TTY {
+		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
 	baseVolume, err := a.repo.GetVolume(r.Context(), base.VolumeID)
@@ -330,18 +338,18 @@ func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	command := firstNonEmpty(req.Command, req.Cmd)
+	command := strings.TrimSpace(firstNonEmpty(req.Command, req.Cmd))
 	if req.EnvID == "" {
 		http.Error(w, "env_id is required", http.StatusBadRequest)
-		return
-	}
-	if command == "" && !req.TTY {
-		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
 	env, err := a.repo.GetEnv(r.Context(), req.EnvID)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if command == "" && !req.TTY {
+		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
 	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command, req.TTY, req.VCPUCount, req.MemoryMiB)
@@ -386,6 +394,17 @@ func (a *app) runEnvCommand(ctx context.Context, env storage.Env, forcedNode, co
 		"firecracker_mode":    mode,
 		"firecracker_payload": command,
 		"commit_after_run":    commitAfterRun,
+	}
+	if base, err := a.repo.GetBaseImage(ctx, env.BaseImageID); err == nil {
+		if len(base.Env) > 0 {
+			startReq["image_env"] = base.Env
+		}
+		if base.WorkingDir != "" {
+			startReq["image_working_dir"] = base.WorkingDir
+		}
+		if base.User != "" {
+			startReq["image_user"] = base.User
+		}
 	}
 	if vcpuCount > 0 {
 		startReq["cpu_count"] = vcpuCount

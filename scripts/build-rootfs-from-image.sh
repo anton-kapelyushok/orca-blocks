@@ -71,12 +71,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-INIT_BIN="$WORK_DIR/orca-init"
 INSPECT_JSON="$WORK_DIR/image-inspect.json"
 ROOTFS_TAR="$WORK_DIR/rootfs.tar"
-
-log "building static orca init"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags '-s -w' -o "$INIT_BIN" ./cmd/orca-init
 
 log "pulling $IMAGE"
 "$CONTAINER_RUNTIME" pull "$IMAGE"
@@ -113,12 +109,8 @@ sudo mount -o loop "$ROOTFS_PATH" "$MOUNT_DIR"
 log "extracting image filesystem"
 sudo tar --numeric-owner -xf "$ROOTFS_TAR" -C "$MOUNT_DIR"
 
-log "injecting Orca init and metadata"
+log "injecting Orca metadata"
 sudo mkdir -p "$MOUNT_DIR"/{dev,proc,sys,run,tmp,etc,orca}
-if [[ -e "$MOUNT_DIR/init" && ! -e "$MOUNT_DIR/orca/original-init" ]]; then
-  sudo mv "$MOUNT_DIR/init" "$MOUNT_DIR/orca/original-init"
-fi
-sudo install -m 0755 "$INIT_BIN" "$MOUNT_DIR/init"
 sudo install -m 0644 "$INSPECT_JSON" "$MOUNT_DIR/etc/orca-image-inspect.json"
 printf '%s\n' "$IMAGE" | sudo tee "$MOUNT_DIR/etc/orca-image-ref" >/dev/null
 printf 'image=%s\nrootfs_size_mb=%s\ncontainer_runtime=%s\n' "$IMAGE" "$ROOTFS_SIZE_MB" "$CONTAINER_RUNTIME" |

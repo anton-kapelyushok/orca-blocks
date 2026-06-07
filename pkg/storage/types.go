@@ -34,12 +34,17 @@ type Snapshot struct {
 }
 
 type BaseImage struct {
-	BaseImageID     string `json:"base_image_id"`
-	ImageRef        string `json:"image_ref"`
-	ImageDigest     string `json:"image_digest"`
-	VolumeID        string `json:"volume_id"`
-	SnapshotID      string `json:"snapshot_id"`
-	RootFSSizeBytes int64  `json:"rootfs_size_bytes"`
+	BaseImageID     string   `json:"base_image_id"`
+	ImageRef        string   `json:"image_ref"`
+	ImageDigest     string   `json:"image_digest"`
+	VolumeID        string   `json:"volume_id"`
+	SnapshotID      string   `json:"snapshot_id"`
+	RootFSSizeBytes int64    `json:"rootfs_size_bytes"`
+	Env             []string `json:"env,omitempty"`
+	WorkingDir      string   `json:"working_dir,omitempty"`
+	Entrypoint      []string `json:"entrypoint,omitempty"`
+	Cmd             []string `json:"cmd,omitempty"`
+	User            string   `json:"user,omitempty"`
 }
 
 type Env struct {

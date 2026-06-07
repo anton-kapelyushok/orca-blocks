@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net"
@@ -41,9 +42,12 @@ type app struct {
 	firecrackerKernel   string
 	firecrackerRootFS   string
 	firecrackerInitrd   string
+	orcaInitPath        string
 	firecrackerBootMode string
 	firecrackerWorkDir  string
 	firecrackerTimeout  time.Duration
+	firecrackerNetwork  bool
+	firecrackerGuestDNS string
 	mountRoot           string
 	nbdDevicePrefix     string
 	mountMu             sync.Mutex
@@ -64,6 +68,9 @@ type firecrackerRunRequest struct {
 	Payload          string
 	VCPUCount        int
 	MemoryMiB        int
+	ImageEnv         []string
+	ImageWorkingDir  string
+	ImageUser        string
 	RequestStartedAt time.Time
 	CommitAfterRun   *bool
 	SaveMemory       bool
@@ -78,6 +85,16 @@ type firecrackerTTYSession struct {
 	stopFn    func() (storage.Snapshot, error)
 	mu        sync.Mutex
 	stopped   bool
+}
+
+type firecrackerNetwork struct {
+	TapName   string
+	HostCIDR  string
+	GuestCIDR string
+	GatewayIP string
+	GuestIP   string
+	GuestMAC  string
+	DNS       string
 }
 
 type firecrackerStepTiming struct {
@@ -127,9 +144,12 @@ func main() {
 		firecrackerKernel:   getenv("FIRECRACKER_KERNEL", "/firecracker-assets/vmlinux"),
 		firecrackerRootFS:   getenv("FIRECRACKER_ROOTFS", "/firecracker-assets/rootfs.ext4"),
 		firecrackerInitrd:   getenv("FIRECRACKER_INITRD", "/firecracker-assets/initramfs.cpio.gz"),
+		orcaInitPath:        getenv("ORCA_INIT_BIN", "/orca-init"),
 		firecrackerBootMode: getenv("FIRECRACKER_BOOT_MODE", "initramfs"),
 		firecrackerWorkDir:  getenv("FIRECRACKER_WORK_DIR", "/tmp/orca-firecracker"),
 		firecrackerTimeout:  time.Duration(mustInt64(getenv("FIRECRACKER_TIMEOUT_SECONDS", "30"))) * time.Second,
+		firecrackerNetwork:  getenv("FIRECRACKER_NETWORK", "true") == "true",
+		firecrackerGuestDNS: getenv("FIRECRACKER_GUEST_DNS", "1.1.1.1"),
 		mountRoot:           getenv("MOUNT_ROOT", "/mnt/orca-sessions"),
 		nbdDevicePrefix:     getenv("NBD_DEVICE_PREFIX", "/dev/nbd"),
 		mounts:              map[string]*mountedSession{},
@@ -205,21 +225,24 @@ func (a *app) createVolume(w http.ResponseWriter, r *http.Request) {
 func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	requestStartedAt := time.Now()
 	var req struct {
-		Runtime            string `json:"runtime"`
-		VolumeID           string `json:"volume_id"`
-		Frontend           string `json:"frontend"`
-		CommitOnDisconnect *bool  `json:"commit_on_disconnect"`
-		Format             bool   `json:"format"`
-		FSType             string `json:"fs_type"`
-		FirecrackerMode    string `json:"firecracker_mode"`
-		FirecrackerPayload string `json:"firecracker_payload"`
-		VCPUCount          int    `json:"cpu_count"`
-		MemoryMiB          int    `json:"memory_mib"`
-		CommitAfterRun     *bool  `json:"commit_after_run"`
-		SaveMemory         bool   `json:"save_memory_snapshot"`
-		RestoreMemory      string `json:"restore_memory_snapshot_path"`
-		RestoreVMState     string `json:"restore_vmstate_snapshot_path"`
-		RestoreDevice      string `json:"restore_firecracker_device"`
+		Runtime            string   `json:"runtime"`
+		VolumeID           string   `json:"volume_id"`
+		Frontend           string   `json:"frontend"`
+		CommitOnDisconnect *bool    `json:"commit_on_disconnect"`
+		Format             bool     `json:"format"`
+		FSType             string   `json:"fs_type"`
+		FirecrackerMode    string   `json:"firecracker_mode"`
+		FirecrackerPayload string   `json:"firecracker_payload"`
+		VCPUCount          int      `json:"cpu_count"`
+		MemoryMiB          int      `json:"memory_mib"`
+		ImageEnv           []string `json:"image_env"`
+		ImageWorkingDir    string   `json:"image_working_dir"`
+		ImageUser          string   `json:"image_user"`
+		CommitAfterRun     *bool    `json:"commit_after_run"`
+		SaveMemory         bool     `json:"save_memory_snapshot"`
+		RestoreMemory      string   `json:"restore_memory_snapshot_path"`
+		RestoreVMState     string   `json:"restore_vmstate_snapshot_path"`
+		RestoreDevice      string   `json:"restore_firecracker_device"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -282,6 +305,9 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 			Payload:          req.FirecrackerPayload,
 			VCPUCount:        req.VCPUCount,
 			MemoryMiB:        req.MemoryMiB,
+			ImageEnv:         req.ImageEnv,
+			ImageWorkingDir:  req.ImageWorkingDir,
+			ImageUser:        req.ImageUser,
 			RequestStartedAt: requestStartedAt,
 			CommitAfterRun:   req.CommitAfterRun,
 			SaveMemory:       req.SaveMemory,
@@ -572,6 +598,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	timingsPath := filepath.Join(workDir, "timings.json")
 	vmStateSnapshotPath := filepath.Join(workDir, "vmstate.snap")
 	memSnapshotPath := filepath.Join(workDir, "memory.snap")
+	var fcNet *firecrackerNetwork
 	detached := false
 	detach := func() {
 		if detached {
@@ -582,6 +609,11 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		record("detach_nbd_device", started, err)
 		a.unregisterNBDExport(session.ID)
 		a.releaseNBDDevice(device)
+		if fcNet != nil {
+			started = time.Now()
+			err := cleanupFirecrackerNetwork(*fcNet)
+			record("cleanup_firecracker_network", started, err)
+		}
 		detached = true
 	}
 	cleanupOnReturn := true
@@ -657,6 +689,15 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	}
 	record("attach_nbd_device", started, nil)
 
+	if firecrackerModeUsesSessionRootFS(mode) {
+		started = time.Now()
+		if err := a.sideloadOrcaInit(device, filepath.Join(workDir, "sideload-root")); err != nil {
+			record("sideload_orca_init", started, err)
+			return nil, err
+		}
+		record("sideload_orca_init", started, nil)
+	}
+
 	if mode == "restore" {
 		resp, err := a.restoreFirecrackerSession(ctx, session, device, workDir, socketPath, configPath, logPath, serialPath, timingsPath, req, record, detach, writeTimings, timingsText)
 		if err != nil {
@@ -673,14 +714,23 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		initrdPath = ""
 		guestDataDevice = ""
 		rootfsReadOnly = mode == "image-rootfs-smoke"
-		bootArgs = imageRootFSBootArgs(payload, rootfsReadOnly, mode == "image-rootfs-tty")
+		if a.firecrackerNetwork {
+			started = time.Now()
+			network, err := setupFirecrackerNetwork(session.ID, a.firecrackerGuestDNS)
+			record("setup_firecracker_network", started, err)
+			if err != nil {
+				return nil, err
+			}
+			fcNet = &network
+		}
+		bootArgs = imageRootFSBootArgs(payload, rootfsReadOnly, mode == "image-rootfs-tty", req.ImageWorkingDir, req.ImageEnv, req.ImageUser, fcNet)
 		successMarker = "orca-init: image-rootfs ok"
 		if mode == "image-rootfs-tty" {
 			successMarker = "orca-init: tty ready"
 		}
 	}
 	started = time.Now()
-	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, rootfsReadOnly, initrdPath, guestDataDevice, false, logPath, bootArgs, vcpuCount, memoryMiB); err != nil {
+	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, rootfsReadOnly, initrdPath, guestDataDevice, false, logPath, bootArgs, vcpuCount, memoryMiB, fcNet); err != nil {
 		record("write_firecracker_config", started, err)
 		return nil, err
 	}
@@ -859,6 +909,43 @@ func firecrackerModeWritesVolume(mode string) bool {
 
 func firecrackerModeUsesSessionRootFS(mode string) bool {
 	return mode == "image-rootfs-smoke" || mode == "image-rootfs-run" || mode == "image-rootfs-tty"
+}
+
+func (a *app) sideloadOrcaInit(device, mountPath string) error {
+	if a.orcaInitPath == "" {
+		return fmt.Errorf("ORCA_INIT_BIN is empty")
+	}
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		return err
+	}
+	log.Printf("sideloading orca-init from %s onto %s", a.orcaInitPath, device)
+	if err := runCommand("mount", device, mountPath); err != nil {
+		return err
+	}
+	mounted := true
+	defer func() {
+		if mounted {
+			_ = runCommand("umount", mountPath)
+		}
+	}()
+	initPath := filepath.Join(mountPath, "init")
+	if err := os.Remove(initPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := copyFileMode(a.orcaInitPath, initPath, 0o755); err != nil {
+		return err
+	}
+	if err := runCommand("sync"); err != nil {
+		return err
+	}
+	if err := runCommand("umount", mountPath); err != nil {
+		return err
+	}
+	mounted = false
+	if err := runCommand("blockdev", "--flushbufs", device); err != nil {
+		return err
+	}
+	return os.RemoveAll(mountPath)
 }
 
 func (a *app) detachMountedSession(sessionID string) error {
@@ -1474,17 +1561,24 @@ func (a *app) visibleNBDDevices() []string {
 }
 
 func copyFile(src, dst string) error {
+	return copyFileMode(src, dst, 0o644)
+}
+
+func copyFileMode(src, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	if err := out.Chmod(mode); err != nil {
 		return err
 	}
 	return out.Sync()
@@ -1508,7 +1602,7 @@ func firecrackerBootArgs(bootMode, mode, payload, dataDevice string, waitForHost
 	return base
 }
 
-func imageRootFSBootArgs(command string, readOnly bool, tty bool) string {
+func imageRootFSBootArgs(command string, readOnly bool, tty bool, workingDir string, env []string, user string, network *firecrackerNetwork) string {
 	if command == "" {
 		command = "cat /etc/orca-image-ref"
 	}
@@ -1520,15 +1614,99 @@ func imageRootFSBootArgs(command string, readOnly bool, tty bool) string {
 	if tty {
 		ttyArg = " orca.tty=1"
 	}
+	workdirArg := ""
+	if workingDir != "" {
+		workdirArg = " orca.workdir_b64=" + base64.StdEncoding.EncodeToString([]byte(workingDir))
+	}
+	envArg := ""
+	if len(env) > 0 {
+		envArg = " orca.env_b64=" + base64.StdEncoding.EncodeToString([]byte(strings.Join(env, "\n")))
+	}
+	userArg := ""
+	if user != "" {
+		userArg = " orca.user_b64=" + base64.StdEncoding.EncodeToString([]byte(user))
+	}
+	netArg := ""
+	if network != nil {
+		netArg = fmt.Sprintf(
+			" orca.net_ip=%s orca.net_gateway=%s orca.net_dns=%s",
+			network.GuestCIDR,
+			network.GatewayIP,
+			network.DNS,
+		)
+	}
 	return fmt.Sprintf(
-		"root=/dev/vda %s console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.command_b64=%s%s",
+		"root=/dev/vda %s console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.command_b64=%s%s%s%s%s%s",
 		rootMode,
 		base64.StdEncoding.EncodeToString([]byte(command)),
 		ttyArg,
+		workdirArg,
+		envArg,
+		userArg,
+		netArg,
 	)
 }
 
-func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly bool, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string, vcpuCount, memoryMiB int) error {
+func setupFirecrackerNetwork(sessionID, dns string) (firecrackerNetwork, error) {
+	network := firecrackerSessionNetwork(sessionID, dns)
+	_ = cleanupFirecrackerNetwork(network)
+	script := fmt.Sprintf(`
+set -eu
+ip tuntap add dev %[1]s mode tap
+ip addr add %[2]s dev %[1]s
+ip link set dev %[1]s up
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+iptables -t nat -C POSTROUTING -s %[3]s -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s %[3]s -j MASQUERADE
+iptables -C FORWARD -i %[1]s -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %[1]s -j ACCEPT
+iptables -C FORWARD -o %[1]s -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -A FORWARD -o %[1]s -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+`, network.TapName, network.HostCIDR, network.GuestCIDR)
+	if err := runCommand("sh", "-lc", script); err != nil {
+		_ = cleanupFirecrackerNetwork(network)
+		return firecrackerNetwork{}, err
+	}
+	return network, nil
+}
+
+func cleanupFirecrackerNetwork(network firecrackerNetwork) error {
+	script := fmt.Sprintf(`
+iptables -t nat -D POSTROUTING -s %[2]s -j MASQUERADE 2>/dev/null || true
+iptables -D FORWARD -i %[1]s -j ACCEPT 2>/dev/null || true
+iptables -D FORWARD -o %[1]s -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+ip link del %[1]s 2>/dev/null || true
+`, network.TapName, network.GuestCIDR)
+	return runCommand("sh", "-lc", script)
+}
+
+func firecrackerSessionNetwork(sessionID, dns string) firecrackerNetwork {
+	if dns == "" {
+		dns = "1.1.1.1"
+	}
+	sum := fnv.New32a()
+	_, _ = sum.Write([]byte(sessionID))
+	n := sum.Sum32()
+	third := 16 + int(n%200)
+	base := 4 + int((n/200)%60)*4
+	hostIP := fmt.Sprintf("172.30.%d.%d", third, base+1)
+	guestIP := fmt.Sprintf("172.30.%d.%d", third, base+2)
+	tapSuffix := strings.ReplaceAll(sessionID, "-", "")
+	if len(tapSuffix) > 10 {
+		tapSuffix = tapSuffix[:10]
+	}
+	if tapSuffix == "" {
+		tapSuffix = fmt.Sprintf("%08x", n)
+	}
+	return firecrackerNetwork{
+		TapName:   "tap" + tapSuffix,
+		HostCIDR:  hostIP + "/30",
+		GuestCIDR: guestIP + "/30",
+		GatewayIP: hostIP,
+		GuestIP:   guestIP,
+		GuestMAC:  fmt.Sprintf("06:00:%02x:%02x:%02x:%02x", byte(n>>24), byte(n>>16), byte(n>>8), byte(n)),
+		DNS:       dns,
+	}
+}
+
+func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly bool, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string, vcpuCount, memoryMiB int, network *firecrackerNetwork) error {
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
 		"boot_args":         bootArgs,
@@ -1567,6 +1745,15 @@ func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly 
 			"show_level":      true,
 			"show_log_origin": true,
 		},
+	}
+	if network != nil {
+		cfg["network-interfaces"] = []map[string]any{
+			{
+				"iface_id":      "eth0",
+				"guest_mac":     network.GuestMAC,
+				"host_dev_name": network.TapName,
+			},
+		}
 	}
 	raw, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

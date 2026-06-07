@@ -12,6 +12,7 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1
 
 need base64
 need grep
+need go
 need mktemp
 
 ASSET_DIR=$(cd "$ASSET_DIR" && pwd)
@@ -47,7 +48,20 @@ SOCKET="$WORK_DIR/firecracker.sock"
 CONFIG="$WORK_DIR/firecracker.json"
 SERIAL_LOG="$WORK_DIR/serial.log"
 FC_LOG="$WORK_DIR/firecracker.log"
+INIT_BIN="$WORK_DIR/orca-init"
 COMMAND_B64=$(printf '%s' "$COMMAND" | base64 -w0)
+
+log "building current orca init"
+BUILD_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.buildTimeUTC=${BUILD_TIME_UTC}" -o "$INIT_BIN" ./cmd/orca-init
+
+log "sideloading current orca init"
+MOUNT_DIR=$(mktemp -d)
+sudo mount -o loop "$ROOTFS_IMAGE" "$MOUNT_DIR"
+sudo install -m 0755 "$INIT_BIN" "$MOUNT_DIR/init"
+sync
+sudo umount "$MOUNT_DIR"
+rmdir "$MOUNT_DIR"
 
 cat >"$CONFIG" <<EOF
 {

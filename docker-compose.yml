@@ -55,7 +55,7 @@ services:
       until curl -fsS http://toxiproxy:8474/proxies >/dev/null; do sleep 1; done &&
       curl -sS -X DELETE http://toxiproxy:8474/proxies/minio-s3 >/dev/null || true &&
       curl -fsS -X POST http://toxiproxy:8474/proxies -H "content-type: application/json" -d "{\"name\":\"minio-s3\",\"listen\":\"0.0.0.0:9000\",\"upstream\":\"minio:9000\"}" &&
-      if [ "${TOXIPROXY_S3_TOXICS_ENABLED:-true}" = "true" ]; then
+      if [ "${TOXIPROXY_S3_TOXICS_ENABLED:-false}" = "true" ]; then
         curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H "content-type: application/json" -d "{\"name\":\"minio-downstream-latency\",\"type\":\"latency\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"latency\":${TOXIPROXY_S3_LATENCY_MS:-20},\"jitter\":0}}" &&
         curl -fsS -X POST http://toxiproxy:8474/proxies/minio-s3/toxics -H "content-type: application/json" -d "{\"name\":\"minio-downstream-bandwidth\",\"type\":\"bandwidth\",\"stream\":\"downstream\",\"toxicity\":1,\"attributes\":{\"rate\":${TOXIPROXY_S3_BANDWIDTH_KBPS:-1250}}}";
       else
