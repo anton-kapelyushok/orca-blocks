@@ -33,6 +33,23 @@ type Snapshot struct {
 	ManifestKey string `json:"manifest_key"`
 }
 
+type BaseImage struct {
+	BaseImageID     string `json:"base_image_id"`
+	ImageRef        string `json:"image_ref"`
+	ImageDigest     string `json:"image_digest"`
+	VolumeID        string `json:"volume_id"`
+	SnapshotID      string `json:"snapshot_id"`
+	RootFSSizeBytes int64  `json:"rootfs_size_bytes"`
+}
+
+type Env struct {
+	EnvID            string `json:"env_id"`
+	BaseImageID      string `json:"base_image_id"`
+	ImageRef         string `json:"image_ref"`
+	VolumeID         string `json:"volume_id"`
+	LatestSnapshotID string `json:"latest_snapshot_id"`
+}
+
 type ChunkRange struct {
 	Index      int64
 	ChunkStart int
@@ -133,6 +150,12 @@ type Repository interface {
 	UpdateLastNode(ctx context.Context, volumeID, nodeID string) error
 	CreateSnapshot(ctx context.Context, snapshot Snapshot) error
 	GetSnapshot(ctx context.Context, snapshotID string) (Snapshot, error)
+	CreateBaseImage(ctx context.Context, image BaseImage) (BaseImage, error)
+	GetBaseImage(ctx context.Context, baseImageID string) (BaseImage, error)
+	GetBaseImageByRef(ctx context.Context, imageRef string) (BaseImage, error)
+	CreateEnv(ctx context.Context, env Env) (Env, error)
+	GetEnv(ctx context.Context, envID string) (Env, error)
+	UpdateEnvSnapshot(ctx context.Context, envID, snapshotID string) error
 }
 
 type ObjectStore interface {

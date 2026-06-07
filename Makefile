@@ -1,4 +1,4 @@
-.PHONY: up down test unit integration demo firecracker-assets firecracker-rootfs firecracker-initramfs firecracker-boot-check logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-firecracker-assets remote-firecracker-rootfs remote-firecracker-initramfs remote-firecracker-boot-check remote-firecracker-docker-test remote-logs remote-down remote-clean
+.PHONY: up down test unit integration demo firecracker-assets firecracker-rootfs firecracker-initramfs firecracker-boot-check logs clean remote-check remote-authorize-key remote-enable-passwordless-sudo remote-setup remote-sync remote-shell remote-test remote-demo remote-firecracker-assets remote-firecracker-rootfs remote-firecracker-initramfs remote-firecracker-boot-check remote-firecracker-docker-test remote-env-api-test remote-logs remote-down remote-clean
 
 GO_CACHE_DIR ?= $(CURDIR)/.gocache
 REMOTE_HOST ?=
@@ -110,6 +110,9 @@ remote-firecracker-boot-check: remote-sync
 
 remote-firecracker-docker-test: remote-sync
 	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && FIRECRACKER_BOOT_MODE=rootfs TOXIPROXY_S3_TOXICS_ENABLED=false docker compose up $(COMPOSE_BUILD_FLAG) -d node-1 node-2 control-service && FIRECRACKER_BOOT_MODE=rootfs FIRECRACKER_DOCKER_TEST=true GOCACHE=$$(pwd)/.gocache go test -count=1 -v -tags=integration ./integration -run TestFirecrackerDockerSmoke'
+
+remote-env-api-test: remote-sync
+	$(REMOTE_SSH) $(REMOTE_SSH_OPTS) $(REMOTE_HOST) 'cd $(REMOTE_DIR) && TOXIPROXY_S3_TOXICS_ENABLED=false docker compose up $(COMPOSE_BUILD_FLAG) -d base-image-service control-service node-1 node-2 && BASE_IMAGE_FIRECRACKER_TEST=true GOCACHE=$$(pwd)/.gocache go test -count=1 -v -tags=integration ./integration -run TestEnvAPIStartResumeNodeOneThenNodeTwo'
 
 remote-logs:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required, for example: make remote-logs REMOTE_HOST=vboxuser@192.168.178.201" >&2; exit 2)

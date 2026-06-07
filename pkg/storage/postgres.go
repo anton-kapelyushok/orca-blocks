@@ -50,7 +50,33 @@ CREATE TABLE IF NOT EXISTS snapshots (
   volume_id TEXT NOT NULL REFERENCES volumes(volume_id),
   manifest_key TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);`)
+);
+
+CREATE TABLE IF NOT EXISTS base_images (
+  base_image_id TEXT PRIMARY KEY,
+  image_ref TEXT NOT NULL,
+  image_digest TEXT NOT NULL,
+  volume_id TEXT NOT NULL REFERENCES volumes(volume_id),
+  snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
+  rootfs_size_bytes BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS base_images_image_ref_idx ON base_images(image_ref);
+CREATE INDEX IF NOT EXISTS base_images_image_digest_idx ON base_images(image_digest);
+
+CREATE TABLE IF NOT EXISTS envs (
+  env_id TEXT PRIMARY KEY,
+  base_image_id TEXT NOT NULL REFERENCES base_images(base_image_id),
+  image_ref TEXT NOT NULL,
+  volume_id TEXT NOT NULL REFERENCES volumes(volume_id),
+  latest_snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS envs_base_image_id_idx ON envs(base_image_id);
+`)
 	return err
 }
 
@@ -62,11 +88,11 @@ func (r *PostgresRepo) CreateVolume(ctx context.Context, volume Volume) (Volume,
 		volume.ChunkSize = DefaultChunkSize
 	}
 	row := r.pool.QueryRow(ctx, `
-INSERT INTO volumes (volume_id, size_bytes, chunk_size)
-VALUES ($1, $2, $3)
+INSERT INTO volumes (volume_id, size_bytes, chunk_size, latest_snapshot_id, last_node)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (volume_id) DO NOTHING
 RETURNING volume_id, size_bytes, chunk_size, latest_snapshot_id, last_node`,
-		volume.VolumeID, volume.SizeBytes, volume.ChunkSize)
+		volume.VolumeID, volume.SizeBytes, volume.ChunkSize, volume.LatestSnapshotID, volume.LastNode)
 	var out Volume
 	if err := row.Scan(&out.VolumeID, &out.SizeBytes, &out.ChunkSize, &out.LatestSnapshotID, &out.LastNode); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -134,4 +160,97 @@ SELECT snapshot_id, volume_id, manifest_key FROM snapshots WHERE snapshot_id = $
 		return Snapshot{}, err
 	}
 	return out, nil
+}
+
+func (r *PostgresRepo) CreateBaseImage(ctx context.Context, image BaseImage) (BaseImage, error) {
+	row := r.pool.QueryRow(ctx, `
+INSERT INTO base_images (base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (base_image_id) DO NOTHING
+RETURNING base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes`,
+		image.BaseImageID, image.ImageRef, image.ImageDigest, image.VolumeID, image.SnapshotID, image.RootFSSizeBytes)
+	var out BaseImage
+	if err := row.Scan(&out.BaseImageID, &out.ImageRef, &out.ImageDigest, &out.VolumeID, &out.SnapshotID, &out.RootFSSizeBytes); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return r.GetBaseImage(ctx, image.BaseImageID)
+		}
+		return BaseImage{}, err
+	}
+	return out, nil
+}
+
+func (r *PostgresRepo) GetBaseImage(ctx context.Context, baseImageID string) (BaseImage, error) {
+	row := r.pool.QueryRow(ctx, `
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+FROM base_images WHERE base_image_id = $1`, baseImageID)
+	return scanBaseImage(row)
+}
+
+func (r *PostgresRepo) GetBaseImageByRef(ctx context.Context, imageRef string) (BaseImage, error) {
+	row := r.pool.QueryRow(ctx, `
+SELECT base_image_id, image_ref, image_digest, volume_id, snapshot_id, rootfs_size_bytes
+FROM base_images WHERE image_ref = $1
+ORDER BY created_at DESC
+LIMIT 1`, imageRef)
+	return scanBaseImage(row)
+}
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanBaseImage(row scanner) (BaseImage, error) {
+	var out BaseImage
+	if err := row.Scan(&out.BaseImageID, &out.ImageRef, &out.ImageDigest, &out.VolumeID, &out.SnapshotID, &out.RootFSSizeBytes); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return BaseImage{}, ErrNotFound
+		}
+		return BaseImage{}, err
+	}
+	return out, nil
+}
+
+func (r *PostgresRepo) CreateEnv(ctx context.Context, env Env) (Env, error) {
+	row := r.pool.QueryRow(ctx, `
+INSERT INTO envs (env_id, base_image_id, image_ref, volume_id, latest_snapshot_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (env_id) DO NOTHING
+RETURNING env_id, base_image_id, image_ref, volume_id, latest_snapshot_id`,
+		env.EnvID, env.BaseImageID, env.ImageRef, env.VolumeID, env.LatestSnapshotID)
+	var out Env
+	if err := row.Scan(&out.EnvID, &out.BaseImageID, &out.ImageRef, &out.VolumeID, &out.LatestSnapshotID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return r.GetEnv(ctx, env.EnvID)
+		}
+		return Env{}, err
+	}
+	return out, nil
+}
+
+func (r *PostgresRepo) GetEnv(ctx context.Context, envID string) (Env, error) {
+	row := r.pool.QueryRow(ctx, `
+SELECT env_id, base_image_id, image_ref, volume_id, latest_snapshot_id
+FROM envs WHERE env_id = $1`, envID)
+	var out Env
+	if err := row.Scan(&out.EnvID, &out.BaseImageID, &out.ImageRef, &out.VolumeID, &out.LatestSnapshotID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Env{}, ErrNotFound
+		}
+		return Env{}, err
+	}
+	return out, nil
+}
+
+func (r *PostgresRepo) UpdateEnvSnapshot(ctx context.Context, envID, snapshotID string) error {
+	tag, err := r.pool.Exec(ctx, `
+UPDATE envs
+SET latest_snapshot_id = $2, updated_at = now()
+WHERE env_id = $1`, envID, snapshotID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

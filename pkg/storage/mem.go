@@ -9,12 +9,16 @@ type MemRepo struct {
 	mu        sync.Mutex
 	volumes   map[string]Volume
 	snapshots map[string]Snapshot
+	images    map[string]BaseImage
+	envs      map[string]Env
 }
 
 func NewMemRepo() *MemRepo {
 	return &MemRepo{
 		volumes:   map[string]Volume{},
 		snapshots: map[string]Snapshot{},
+		images:    map[string]BaseImage{},
+		envs:      map[string]Env{},
 	}
 }
 
@@ -82,6 +86,63 @@ func (r *MemRepo) GetSnapshot(_ context.Context, snapshotID string) (Snapshot, e
 		return Snapshot{}, ErrNotFound
 	}
 	return s, nil
+}
+
+func (r *MemRepo) CreateBaseImage(_ context.Context, image BaseImage) (BaseImage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.images[image.BaseImageID] = image
+	return image, nil
+}
+
+func (r *MemRepo) GetBaseImage(_ context.Context, baseImageID string) (BaseImage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	image, ok := r.images[baseImageID]
+	if !ok {
+		return BaseImage{}, ErrNotFound
+	}
+	return image, nil
+}
+
+func (r *MemRepo) GetBaseImageByRef(_ context.Context, imageRef string) (BaseImage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, image := range r.images {
+		if image.ImageRef == imageRef {
+			return image, nil
+		}
+	}
+	return BaseImage{}, ErrNotFound
+}
+
+func (r *MemRepo) CreateEnv(_ context.Context, env Env) (Env, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.envs[env.EnvID] = env
+	return env, nil
+}
+
+func (r *MemRepo) GetEnv(_ context.Context, envID string) (Env, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	env, ok := r.envs[envID]
+	if !ok {
+		return Env{}, ErrNotFound
+	}
+	return env, nil
+}
+
+func (r *MemRepo) UpdateEnvSnapshot(_ context.Context, envID, snapshotID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	env, ok := r.envs[envID]
+	if !ok {
+		return ErrNotFound
+	}
+	env.LatestSnapshotID = snapshotID
+	r.envs[envID] = env
+	return nil
 }
 
 type MemObjectStore struct {

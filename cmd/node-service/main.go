@@ -483,7 +483,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	if mode == "" {
 		mode = "smoke"
 	}
-	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" && mode != "docker-smoke" && mode != "docker-read" {
+	if mode != "smoke" && mode != "write" && mode != "read" && mode != "restore" && mode != "docker-smoke" && mode != "docker-read" && mode != "image-rootfs-smoke" && mode != "image-rootfs-run" {
 		return nil, fmt.Errorf("unsupported firecracker_mode %q", mode)
 	}
 	if mode == "restore" && (req.RestoreMemory == "" || req.RestoreVMState == "" || req.RestoreDevice == "") {
@@ -557,31 +557,39 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	var guestDataDevice string
 	var rootfsPath string
 	var initrdPath string
-	switch firecrackerBootMode {
-	case "rootfs":
-		guestDataDevice = "/dev/vdb"
-		if mode != "restore" {
-			started = time.Now()
-			if err := copyFile(a.firecrackerRootFS, rootfsCopy); err != nil {
-				record("copy_rootfs", started, err)
-				return nil, fmt.Errorf("copy firecracker rootfs: %w", err)
-			}
-			record("copy_rootfs", started, nil)
-			rootfsPath = rootfsCopy
-		}
-	case "initramfs":
+	rootfsReadOnly := false
+	rootfsCopied := false
+	if firecrackerModeUsesSessionRootFS(mode) {
+		firecrackerBootMode = "image-rootfs"
 		guestDataDevice = "/dev/vda"
-		if mode != "restore" {
-			started = time.Now()
-			if err := copyFile(a.firecrackerInitrd, initrdCopy); err != nil {
-				record("copy_initramfs", started, err)
-				return nil, fmt.Errorf("copy firecracker initramfs: %w", err)
+	} else {
+		switch firecrackerBootMode {
+		case "rootfs":
+			guestDataDevice = "/dev/vdb"
+			if mode != "restore" {
+				started = time.Now()
+				if err := copyFile(a.firecrackerRootFS, rootfsCopy); err != nil {
+					record("copy_rootfs", started, err)
+					return nil, fmt.Errorf("copy firecracker rootfs: %w", err)
+				}
+				record("copy_rootfs", started, nil)
+				rootfsPath = rootfsCopy
+				rootfsCopied = true
 			}
-			record("copy_initramfs", started, nil)
-			initrdPath = initrdCopy
+		case "initramfs":
+			guestDataDevice = "/dev/vda"
+			if mode != "restore" {
+				started = time.Now()
+				if err := copyFile(a.firecrackerInitrd, initrdCopy); err != nil {
+					record("copy_initramfs", started, err)
+					return nil, fmt.Errorf("copy firecracker initramfs: %w", err)
+				}
+				record("copy_initramfs", started, nil)
+				initrdPath = initrdCopy
+			}
+		default:
+			return nil, fmt.Errorf("unsupported FIRECRACKER_BOOT_MODE %q", firecrackerBootMode)
 		}
-	default:
-		return nil, fmt.Errorf("unsupported FIRECRACKER_BOOT_MODE %q", firecrackerBootMode)
 	}
 
 	started = time.Now()
@@ -613,8 +621,17 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 
 	createMemorySnapshot := firecrackerModeWritesVolume(mode) && commitAfterRun && req.SaveMemory
 	bootArgs := firecrackerBootArgs(firecrackerBootMode, mode, payload, guestDataDevice, createMemorySnapshot)
+	successMarker := "orca-init: " + mode + " ok"
+	if firecrackerModeUsesSessionRootFS(mode) {
+		rootfsPath = device
+		initrdPath = ""
+		guestDataDevice = ""
+		rootfsReadOnly = mode == "image-rootfs-smoke"
+		bootArgs = imageRootFSBootArgs(payload, rootfsReadOnly)
+		successMarker = "orca-init: image-rootfs ok"
+	}
 	started = time.Now()
-	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, initrdPath, device, false, logPath, bootArgs); err != nil {
+	if err := writeFirecrackerConfig(configPath, a.firecrackerKernel, rootfsPath, rootfsReadOnly, initrdPath, guestDataDevice, false, logPath, bootArgs); err != nil {
 		record("write_firecracker_config", started, err)
 		return nil, err
 	}
@@ -625,7 +642,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 	log.Printf("running firecracker session=%s mode=%s device=%s", session.ID, mode, device)
 	cmd := exec.CommandContext(runCtx, a.firecrackerBin, "--api-sock", socketPath, "--config-file", configPath)
 	started = time.Now()
-	run, err := startFirecrackerProcess(cmd, serialPath, "orca-init: "+mode+" ok")
+	run, err := startFirecrackerProcess(cmd, serialPath, successMarker)
 	if err != nil {
 		record("run_firecracker", started, err)
 		return nil, err
@@ -666,7 +683,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		return nil, fmt.Errorf("firecracker failed after guest success: %w: %s", err, tail(serial, 4096))
 	}
 	serial := run.output()
-	if rootfsPath != "" && !createMemorySnapshot {
+	if rootfsCopied && rootfsPath != "" && !createMemorySnapshot {
 		started = time.Now()
 		if err := os.Remove(rootfsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			record("remove_rootfs_copy", started, err)
@@ -722,7 +739,11 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 }
 
 func firecrackerModeWritesVolume(mode string) bool {
-	return mode == "write" || mode == "docker-smoke"
+	return mode == "write" || mode == "docker-smoke" || mode == "image-rootfs-run"
+}
+
+func firecrackerModeUsesSessionRootFS(mode string) bool {
+	return mode == "image-rootfs-smoke" || mode == "image-rootfs-run"
 }
 
 func (a *app) detachMountedSession(sessionID string) error {
@@ -1194,7 +1215,22 @@ func firecrackerBootArgs(bootMode, mode, payload, dataDevice string, waitForHost
 	return base
 }
 
-func writeFirecrackerConfig(path, kernelPath, rootfsPath, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string) error {
+func imageRootFSBootArgs(command string, readOnly bool) string {
+	if command == "" {
+		command = "cat /etc/orca-image-ref"
+	}
+	rootMode := "rw"
+	if readOnly {
+		rootMode = "ro"
+	}
+	return fmt.Sprintf(
+		"root=/dev/vda %s console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init orca.command_b64=%s",
+		rootMode,
+		base64.StdEncoding.EncodeToString([]byte(command)),
+	)
+}
+
+func writeFirecrackerConfig(path, kernelPath, rootfsPath string, rootfsReadOnly bool, initrdPath, dataDevice string, dataReadOnly bool, logPath, bootArgs string) error {
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
 		"boot_args":         bootArgs,
@@ -1208,15 +1244,17 @@ func writeFirecrackerConfig(path, kernelPath, rootfsPath, initrdPath, dataDevice
 			"drive_id":       "rootfs",
 			"path_on_host":   rootfsPath,
 			"is_root_device": true,
-			"is_read_only":   false,
+			"is_read_only":   rootfsReadOnly,
 		})
 	}
-	drives = append(drives, map[string]any{
-		"drive_id":       "orca",
-		"path_on_host":   dataDevice,
-		"is_root_device": false,
-		"is_read_only":   dataReadOnly,
-	})
+	if dataDevice != "" {
+		drives = append(drives, map[string]any{
+			"drive_id":       "orca",
+			"path_on_host":   dataDevice,
+			"is_root_device": false,
+			"is_read_only":   dataReadOnly,
+		})
+	}
 	cfg := map[string]any{
 		"boot-source": bootSource,
 		"drives":      drives,

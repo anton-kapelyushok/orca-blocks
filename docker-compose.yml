@@ -86,6 +86,7 @@ services:
       NODE_2_URL: http://node-2:8080
       NODE_1_PUBLIC_URL: http://localhost:18081
       NODE_2_PUBLIC_URL: http://localhost:18082
+      BASE_IMAGE_URL: http://base-image-service:8080
       PORT: "8080"
     ports:
       - "18080:8080"
@@ -96,6 +97,51 @@ services:
         condition: service_healthy
       node-2:
         condition: service_healthy
+      base-image-service:
+        condition: service_healthy
+
+  base-image-service:
+    build:
+      context: .
+      args:
+        TARGET_CMD: base-image-service
+        TARGET: ./cmd/base-image-service
+    environment:
+      NODE_ID: base-image-service
+      DATABASE_URL: postgres://orca:orca@postgres:5432/orca?sslmode=disable
+      S3_ENDPOINT: http://toxiproxy:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: orca-blocks
+      CACHE_DIR: /cache
+      CACHE_MAX_BYTES: "536870912"
+      WORK_DIR: /work
+      ORCA_INIT_BIN: /orca-init
+      CONTAINER_RUNTIME: docker
+      ROOTFS_SIZE_MB: "2048"
+      PORT: "8080"
+    ports:
+      - "18083:8080"
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - base-image-cache:/cache
+      - base-image-work:/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      toxiproxy-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
   node-1:
     build:
@@ -220,3 +266,5 @@ volumes:
   node-2-cache:
   node-1-sessions:
   node-2-sessions:
+  base-image-cache:
+  base-image-work:

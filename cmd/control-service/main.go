@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/anton-k/orca-blocks/pkg/storage"
+	"github.com/google/uuid"
 )
 
 type node struct {
@@ -24,9 +25,10 @@ type node struct {
 }
 
 type app struct {
-	repo   storage.Repository
-	nodes  map[string]node
-	client *http.Client
+	repo         storage.Repository
+	nodes        map[string]node
+	client       *http.Client
+	baseImageURL string
 }
 
 func main() {
@@ -50,7 +52,8 @@ func main() {
 				PublicURL: getenv("NODE_2_PUBLIC_URL", getenv("NODE_2_URL", "http://localhost:8082")),
 			},
 		},
-		client: &http.Client{Timeout: 60 * time.Second},
+		client:       &http.Client{Timeout: 5 * time.Minute},
+		baseImageURL: getenv("BASE_IMAGE_URL", "http://localhost:18083"),
 	}
 
 	mux := http.NewServeMux()
@@ -60,6 +63,11 @@ func main() {
 	mux.HandleFunc("GET /nodes", a.listNodes)
 	mux.HandleFunc("POST /volumes/create", a.createVolume)
 	mux.HandleFunc("GET /volumes/{id}", a.getVolume)
+	mux.HandleFunc("POST /buildImage", a.buildImage)
+	mux.HandleFunc("GET /getImageVolume", a.getImageVolume)
+	mux.HandleFunc("GET /envs/{id}", a.getEnv)
+	mux.HandleFunc("POST /startEnv", a.startEnv)
+	mux.HandleFunc("POST /resumeEnv", a.resumeEnv)
 	mux.HandleFunc("POST /sessions/start", a.startSession)
 	mux.HandleFunc("POST /scheduler/force", a.forceLastNode)
 
@@ -135,12 +143,6 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	selected, err := a.selectNode(r.Context(), volume, req.ForceNode)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-
 	startReq := map[string]any{"volume_id": req.VolumeID}
 	if req.Runtime != "" {
 		startReq["runtime"] = req.Runtime
@@ -178,25 +180,241 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 	if req.RestoreDevice != "" {
 		startReq["restore_firecracker_device"] = req.RestoreDevice
 	}
-	body, _ := json.Marshal(startReq)
-	resp, err := a.client.Post(selected.URL+"/sessions/start", "application/json", bytes.NewReader(body))
+	out, err := a.startNodeSession(r.Context(), volume, req.ForceNode, startReq)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		http.Error(w, string(raw), resp.StatusCode)
-		return
-	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	out["node_url"] = selected.PublicURL
+	status, out, err := a.postJSON(r.Context(), a.baseImageURL+"/buildImage", raw)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, status, out)
+}
+
+func (a *app) getImageVolume(w http.ResponseWriter, r *http.Request) {
+	baseImageID := r.URL.Query().Get("base_image_id")
+	imageRef := r.URL.Query().Get("image")
+	var (
+		image storage.BaseImage
+		err   error
+	)
+	switch {
+	case baseImageID != "":
+		image, err = a.repo.GetBaseImage(r.Context(), baseImageID)
+	case imageRef != "":
+		image, err = a.repo.GetBaseImageByRef(r.Context(), imageRef)
+	default:
+		http.Error(w, "base_image_id or image query parameter is required", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, image)
+}
+
+func (a *app) getEnv(w http.ResponseWriter, r *http.Request) {
+	env, err := a.repo.GetEnv(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, env)
+}
+
+type envRunRequest struct {
+	BaseImageID string `json:"base_image_id"`
+	Image       string `json:"image"`
+	Command     string `json:"command"`
+	Cmd         string `json:"cmd"`
+	ForceNode   string `json:"force_node"`
+}
+
+func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
+	var req envRunRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	command := firstNonEmpty(req.Command, req.Cmd)
+	if command == "" {
+		http.Error(w, "command is required", http.StatusBadRequest)
+		return
+	}
+	base, err := a.resolveBaseImage(r.Context(), req.BaseImageID, req.Image)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	baseVolume, err := a.repo.GetVolume(r.Context(), base.VolumeID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	envID := "env-" + uuid.NewString()
+	envVolumeID := "env-vol-" + uuid.NewString()
+	if _, err := a.repo.CreateVolume(r.Context(), storage.Volume{
+		VolumeID:         envVolumeID,
+		SizeBytes:        baseVolume.SizeBytes,
+		ChunkSize:        baseVolume.ChunkSize,
+		LatestSnapshotID: base.SnapshotID,
+	}); err != nil {
+		writeError(w, err)
+		return
+	}
+	env, err := a.repo.CreateEnv(r.Context(), storage.Env{
+		EnvID:            envID,
+		BaseImageID:      base.BaseImageID,
+		ImageRef:         base.ImageRef,
+		VolumeID:         envVolumeID,
+		LatestSnapshotID: base.SnapshotID,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+func (a *app) resumeEnv(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		EnvID     string `json:"env_id"`
+		Command   string `json:"command"`
+		Cmd       string `json:"cmd"`
+		ForceNode string `json:"force_node"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	command := firstNonEmpty(req.Command, req.Cmd)
+	if req.EnvID == "" {
+		http.Error(w, "env_id is required", http.StatusBadRequest)
+		return
+	}
+	if command == "" {
+		http.Error(w, "command is required", http.StatusBadRequest)
+		return
+	}
+	env, err := a.repo.GetEnv(r.Context(), req.EnvID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out, err := a.runEnvCommand(r.Context(), env, req.ForceNode, command)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (a *app) resolveBaseImage(ctx context.Context, baseImageID, imageRef string) (storage.BaseImage, error) {
+	if baseImageID != "" {
+		return a.repo.GetBaseImage(ctx, baseImageID)
+	}
+	if imageRef == "" {
+		return storage.BaseImage{}, fmt.Errorf("base_image_id or image is required")
+	}
+	image, err := a.repo.GetBaseImageByRef(ctx, imageRef)
+	if err == nil {
+		return image, nil
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return storage.BaseImage{}, err
+	}
+	return storage.BaseImage{}, fmt.Errorf("base image %q is not built; call buildImage first: %w", imageRef, storage.ErrNotFound)
+}
+
+func (a *app) runEnvCommand(ctx context.Context, env storage.Env, forcedNode, command string) (map[string]any, error) {
+	volume, err := a.repo.GetVolume(ctx, env.VolumeID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := a.startNodeSession(ctx, volume, forcedNode, map[string]any{
+		"volume_id":           env.VolumeID,
+		"runtime":             "firecracker",
+		"firecracker_mode":    "image-rootfs-run",
+		"firecracker_payload": command,
+		"commit_after_run":    true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if snapshotID, ok := out["snapshot_id"].(string); ok && snapshotID != "" {
+		if err := a.repo.UpdateEnvSnapshot(ctx, env.EnvID, snapshotID); err != nil {
+			return nil, err
+		}
+		env.LatestSnapshotID = snapshotID
+	}
+	out["env_id"] = env.EnvID
+	out["base_image_id"] = env.BaseImageID
+	out["image_ref"] = env.ImageRef
+	out["env_volume_id"] = env.VolumeID
+	out["latest_snapshot_id"] = env.LatestSnapshotID
+	return out, nil
+}
+
+func (a *app) startNodeSession(ctx context.Context, volume storage.Volume, forcedNode string, startReq map[string]any) (map[string]any, error) {
+	selected, err := a.selectNode(ctx, volume, forcedNode)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(startReq)
+	if err != nil {
+		return nil, err
+	}
+	status, out, err := a.postJSON(ctx, selected.URL+"/sessions/start", raw)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 300 {
+		return nil, fmt.Errorf("node %s start session failed with status %d: %+v", selected.ID, status, out)
+	}
+	out["node_url"] = selected.PublicURL
+	return out, nil
+}
+
+func (a *app) postJSON(ctx context.Context, target string, raw []byte) (int, map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(raw))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, err
+	}
+	out := map[string]any{}
+	if len(body) > 0 && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		if err := json.Unmarshal(body, &out); err != nil {
+			return resp.StatusCode, nil, fmt.Errorf("decode %s response: %w body=%s", target, err, body)
+		}
+	} else if len(body) > 0 {
+		out["error"] = strings.TrimSpace(string(body))
+	}
+	return resp.StatusCode, out, nil
 }
 
 func (a *app) forceLastNode(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +477,15 @@ func (a *app) available(ctx context.Context, n node) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
