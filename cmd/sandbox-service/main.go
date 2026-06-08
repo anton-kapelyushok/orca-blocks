@@ -34,13 +34,31 @@ type baseImage struct {
 	RootFSSizeBytes int64  `json:"rootfs_size_bytes"`
 }
 
+type envRecord struct {
+	EnvID            string `json:"env_id"`
+	BaseImageID      string `json:"base_image_id"`
+	ImageRef         string `json:"image_ref"`
+	VolumeID         string `json:"volume_id"`
+	LatestSnapshotID string `json:"latest_snapshot_id"`
+}
+
+type nodeInfo struct {
+	NodeID string `json:"node_id"`
+	URL    string `json:"url"`
+}
+
 type pageData struct {
-	Images []baseImage
-	Result *runResult
-	Build  *buildResult
-	Notice string
-	Error  string
-	Now    string
+	Images         []baseImage
+	Envs           []envRecord
+	ActiveSessions []envSession
+	Nodes          []nodeInfo
+	Builds         []buildJobStatus
+	BuildJob       *buildJobStatus
+	Result         *runResult
+	Build          *buildResult
+	Notice         string
+	Error          string
+	Now            string
 }
 
 type buildResult struct {
@@ -53,6 +71,19 @@ type buildResult struct {
 	DurationMS      int64
 	Timings         []timing
 	RawTimings      string
+}
+
+type buildJobStatus struct {
+	ID           string         `json:"id"`
+	Image        string         `json:"image"`
+	RootFSSizeMB int64          `json:"rootfs_size_mb"`
+	State        string         `json:"state"`
+	LastLine     string         `json:"last_line"`
+	StartedAt    string         `json:"started_at"`
+	FinishedAt   string         `json:"finished_at"`
+	Error        string         `json:"error"`
+	Result       map[string]any `json:"result"`
+	Timings      []timing       `json:"build_timings"`
 }
 
 type runResult struct {
@@ -77,6 +108,7 @@ type envSession struct {
 	ImageRef   string
 	SnapshotID string
 	Timings    []timing
+	Closed     bool
 }
 
 type envPageData struct {
@@ -91,6 +123,12 @@ type envPageData struct {
 	AllTimings  []timing
 	RawTimings  string
 	HasRunStats bool
+}
+
+type buildsPageData struct {
+	Builds []buildJobStatus
+	Error  string
+	Now    string
 }
 
 type timing struct {
@@ -113,12 +151,14 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 	})
 	mux.HandleFunc("GET /", a.index)
+	mux.HandleFunc("GET /builds", a.buildsPage)
 	mux.HandleFunc("GET /env", a.env)
 	mux.HandleFunc("GET /terminal", a.terminal)
 	mux.HandleFunc("GET /tty/output", a.ttyOutput)
 	mux.HandleFunc("POST /tty/input", a.ttyInput)
 	mux.HandleFunc("POST /tty/stop", a.ttyStop)
 	mux.HandleFunc("POST /build", a.buildImage)
+	mux.HandleFunc("GET /build/status", a.buildStatus)
 	mux.HandleFunc("POST /start", a.startEnv)
 	mux.HandleFunc("POST /start-tty", a.startTTY)
 	mux.HandleFunc("POST /resume", a.resumeEnv)
@@ -131,6 +171,20 @@ func main() {
 
 func (a *app) index(w http.ResponseWriter, r *http.Request) {
 	a.render(w, r, pageData{})
+}
+
+func (a *app) buildsPage(w http.ResponseWriter, r *http.Request) {
+	data := buildsPageData{Now: time.Now().Format("15:04:05")}
+	builds, err := a.listBuilds(r.Context())
+	if err != nil {
+		data.Error = err.Error()
+	} else {
+		data.Builds = builds
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := template.Must(template.New("builds").Parse(buildsHTML)).Execute(w, data); err != nil {
+		log.Printf("render builds: %v", err)
+	}
 }
 
 func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
@@ -151,15 +205,32 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		}
 		req["rootfs_size_mb"] = n
 	}
-	out, err := a.postJSON(r.Context(), "/buildImage", req)
+	out, err := a.postJSON(r.Context(), "/builds", req)
 	if err != nil {
 		a.render(w, r, pageData{Error: err.Error()})
 		return
 	}
-	a.render(w, r, pageData{
-		Notice: fmt.Sprintf("built %s as %s", out["image_ref"], out["base_image_id"]),
-		Build:  summarizeBuild(out),
-	})
+	jobID := anyString(out["id"])
+	if jobID == "" {
+		a.render(w, r, pageData{Error: "build started without a job id"})
+		return
+	}
+	http.Redirect(w, r, "/?build_job="+url.QueryEscape(jobID), http.StatusSeeOther)
+}
+
+func (a *app) buildStatus(w http.ResponseWriter, r *http.Request) {
+	jobID := r.URL.Query().Get("id")
+	if jobID == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	raw, err := a.get(r.Context(), "/builds/"+url.PathEscape(jobID))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(raw)
 }
 
 func (a *app) startEnv(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +453,7 @@ func (a *app) rememberTTYStop(r *http.Request, raw []byte) {
 	if len(timings) > 0 {
 		stored.Timings = timings
 	}
+	stored.Closed = true
 	a.sessions[sessionID] = stored
 }
 
@@ -424,7 +496,30 @@ func (a *app) render(w http.ResponseWriter, r *http.Request, data pageData) {
 	if err != nil && data.Error == "" {
 		data.Error = err.Error()
 	}
+	envs, envErr := a.listEnvs(r.Context())
+	if envErr != nil && data.Error == "" {
+		data.Error = envErr.Error()
+	}
+	nodes, nodeErr := a.listNodes(r.Context())
+	if nodeErr != nil && data.Error == "" {
+		data.Error = nodeErr.Error()
+	}
+	builds, buildsErr := a.listBuilds(r.Context())
+	if buildsErr != nil && data.Error == "" {
+		data.Error = buildsErr.Error()
+	}
+	if jobID := r.URL.Query().Get("build_job"); jobID != "" && data.BuildJob == nil {
+		if job, err := a.getBuildJob(r.Context(), jobID); err == nil {
+			data.BuildJob = job
+		} else if data.Error == "" {
+			data.Error = err.Error()
+		}
+	}
 	data.Images = images
+	data.Envs = envs
+	data.Nodes = nodes
+	data.Builds = builds
+	data.ActiveSessions = a.activeSessions()
 	data.Now = time.Now().Format("15:04:05")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := a.tmpl.Execute(w, data); err != nil {
@@ -442,6 +537,66 @@ func (a *app) listImages(ctx context.Context) ([]baseImage, error) {
 		return nil, err
 	}
 	return images, nil
+}
+
+func (a *app) listEnvs(ctx context.Context) ([]envRecord, error) {
+	raw, err := a.get(ctx, "/envs")
+	if err != nil {
+		return nil, err
+	}
+	var envs []envRecord
+	if err := json.Unmarshal(raw, &envs); err != nil {
+		return nil, err
+	}
+	return envs, nil
+}
+
+func (a *app) listNodes(ctx context.Context) ([]nodeInfo, error) {
+	raw, err := a.get(ctx, "/nodes")
+	if err != nil {
+		return nil, err
+	}
+	var nodes []nodeInfo
+	if err := json.Unmarshal(raw, &nodes); err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}
+
+func (a *app) getBuildJob(ctx context.Context, id string) (*buildJobStatus, error) {
+	raw, err := a.get(ctx, "/builds/"+url.PathEscape(id))
+	if err != nil {
+		return nil, err
+	}
+	var job buildJobStatus
+	if err := json.Unmarshal(raw, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+func (a *app) listBuilds(ctx context.Context) ([]buildJobStatus, error) {
+	raw, err := a.get(ctx, "/builds")
+	if err != nil {
+		return nil, err
+	}
+	var builds []buildJobStatus
+	if err := json.Unmarshal(raw, &builds); err != nil {
+		return nil, err
+	}
+	return builds, nil
+}
+
+func (a *app) activeSessions() []envSession {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]envSession, 0, len(a.sessions))
+	for _, session := range a.sessions {
+		if !session.Closed {
+			out = append(out, session)
+		}
+	}
+	return out
 }
 
 func (a *app) get(ctx context.Context, path string) ([]byte, error) {
@@ -719,13 +874,23 @@ const pageHTML = `<!doctype html>
     .thirds { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .meta { display: flex; flex-wrap: wrap; gap: 10px 14px; color: var(--muted); margin-bottom: 10px; }
     .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbfcfe; }
+    .stat strong { display: block; font-size: 20px; line-height: 1.1; }
+    .inline-form { display: inline; }
+    .secondary { background: #344054; }
+    .ghost { background: #eef2f7; color: #475467; cursor: default; }
+    .pill { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; color: var(--muted); font-size: 12px; background: #fbfcfe; }
+    .build-line { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfe; overflow-wrap: anywhere; }
+    .nav { display: flex; gap: 12px; align-items: center; }
+    a { color: var(--accent); }
     @media (max-width: 980px) { main, .result-grid, .thirds { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
     <h1>Orca Sandbox</h1>
-    <div class="muted">updated {{.Now}}</div>
+    <div class="nav"><a href="/builds">Builds</a><span class="muted">updated {{.Now}}</span></div>
   </header>
   <main>
     <div class="forms">
@@ -735,16 +900,11 @@ const pageHTML = `<!doctype html>
       <section>
         <h2>Create Env</h2>
         <form method="post" action="/start">
-          <div class="row">
-            <div>
-              <label>Image</label>
-              <input name="image" value="alpine:3.22">
-            </div>
-            <div>
-              <label>Base image id</label>
-              <input name="base_image_id" placeholder="optional">
-            </div>
-          </div>
+          <label>Base image</label>
+          <select name="base_image_id" {{if not .Images}}disabled{{end}}>
+            {{range .Images}}<option value="{{.BaseImageID}}">{{.ImageRef}} · {{.BaseImageID}}</option>{{end}}
+          </select>
+          {{if not .Images}}<div class="muted">Build a base image first.</div>{{end}}
           <label>Orca run command</label>
           <textarea name="command">sleep infinity</textarea>
           <div class="thirds">
@@ -792,11 +952,15 @@ const pageHTML = `<!doctype html>
 
       <section>
         <h2>Build Base Image</h2>
-        <form method="post" action="/build">
+        <form method="post" action="/build" id="build-form">
           <div class="row">
             <div>
               <label>Image</label>
-              <input name="image" value="alpine:3.22">
+              <input name="image" list="known-images" value="alpine:3.22">
+              <datalist id="known-images">
+                {{range .Images}}<option value="{{.ImageRef}}"></option>{{end}}
+                <option value="alpine:3.22"></option>
+              </datalist>
             </div>
             <div>
               <label>Rootfs size MB</label>
@@ -805,18 +969,126 @@ const pageHTML = `<!doctype html>
           </div>
           <button type="submit">Build</button>
         </form>
+        <div class="muted" style="margin-top:8px">Builds run in the background; progress appears on this page.</div>
       </section>
     </div>
 
     <div class="stack">
       <section>
+        <h2>Storage Status</h2>
+        <div class="status-grid">
+          <div class="stat"><strong>{{len .Images}}</strong><span class="muted">base images</span></div>
+          <div class="stat"><strong>{{len .Envs}}</strong><span class="muted">envs</span></div>
+          <div class="stat"><strong>{{len .ActiveSessions}}</strong><span class="muted">running here</span></div>
+          <div class="stat"><strong>{{len .Builds}}</strong><span class="muted">build jobs</span></div>
+        </div>
+        <div class="meta" style="margin-top:10px;margin-bottom:0">
+          {{range .Nodes}}<span class="pill">{{.NodeID}}</span>{{end}}
+          <span class="pill">chunks immutable</span>
+          <span class="pill">delete image disabled until chunk GC exists</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Builds</h2>
+        {{if .Builds}}
+        <table>
+          <thead><tr><th>Image</th><th>State</th><th>Last line</th><th></th></tr></thead>
+          <tbody>
+          {{range .Builds}}
+            <tr>
+              <td>{{.Image}}</td>
+              <td><code>{{.State}}</code></td>
+              <td><code>{{.LastLine}}</code></td>
+              <td><a href="/?build_job={{.ID}}">check</a></td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+        <div class="muted" style="margin-top:8px"><a href="/builds">Open full build list</a></div>
+        {{else}}<div class="muted">No builds started in this service process.</div>{{end}}
+      </section>
+
+      {{if .BuildJob}}
+      <section id="build-status" data-build-id="{{.BuildJob.ID}}">
+        <h2>Build Status</h2>
+        <div class="meta">
+          <span>job <code id="build-id">{{.BuildJob.ID}}</code></span>
+          <span>image <code id="build-image">{{.BuildJob.Image}}</code></span>
+          <span>state <code id="build-state">{{.BuildJob.State}}</code></span>
+        </div>
+        <div class="build-line"><code id="build-last-line">{{.BuildJob.LastLine}}</code></div>
+        <div id="build-error" class="error" style="display:none;margin-top:10px"></div>
+        <table style="margin-top:10px">
+          <thead><tr><th>Step</th><th>Duration</th><th>Status</th></tr></thead>
+          <tbody id="build-timing-body">
+          {{range .BuildJob.Timings}}
+            <tr><td>{{.Name}}</td><td>{{.DurationMS}}ms</td><td>{{.Status}}{{if .Error}} {{.Error}}{{end}}</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </section>
+      {{end}}
+
+      <section>
+        <h2>Current Envs</h2>
+        {{if .ActiveSessions}}
+        <table>
+          <thead><tr><th>Env</th><th>Image</th><th>Node</th><th>Session</th><th></th></tr></thead>
+          <tbody>
+          {{range .ActiveSessions}}
+            <tr>
+              <td><code>{{.EnvID}}</code></td>
+              <td>{{.ImageRef}}</td>
+              <td><code>{{.NodeID}}</code></td>
+              <td><code>{{.SessionID}}</code></td>
+              <td><a href="/env?env_id={{.EnvID}}&session_id={{.SessionID}}&node_id={{.NodeID}}">open</a></td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+        {{else}}<div class="muted">No running envs in this sandbox-service process.</div>{{end}}
+      </section>
+
+      <section>
+        <h2>All Envs</h2>
+        {{if .Envs}}
+        <table>
+          <thead><tr><th>Env</th><th>Image</th><th>Snapshot</th><th></th></tr></thead>
+          <tbody>
+          {{range .Envs}}
+            <tr>
+              <td><code>{{.EnvID}}</code></td>
+              <td>{{.ImageRef}}</td>
+              <td><code>{{.LatestSnapshotID}}</code></td>
+              <td>
+                <form class="inline-form" method="post" action="/resume">
+                  <input type="hidden" name="env_id" value="{{.EnvID}}">
+                  <input type="hidden" name="command" value="sleep infinity">
+                  <button class="secondary" type="submit">Resume</button>
+                </form>
+              </td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+        {{else}}<div class="muted">No envs created yet.</div>{{end}}
+      </section>
+
+      <section>
         <h2>Images</h2>
         {{if .Images}}
         <table>
-          <thead><tr><th>Image</th><th>Base image id</th><th>Snapshot</th><th>Size</th></tr></thead>
+          <thead><tr><th>Image</th><th>Base image id</th><th>Snapshot</th><th>Size</th><th></th></tr></thead>
           <tbody>
           {{range .Images}}
-            <tr><td>{{.ImageRef}}</td><td><code>{{.BaseImageID}}</code></td><td><code>{{.SnapshotID}}</code></td><td>{{.RootFSSizeBytes}}</td></tr>
+            <tr>
+              <td>{{.ImageRef}}</td>
+              <td><code>{{.BaseImageID}}</code></td>
+              <td><code>{{.SnapshotID}}</code></td>
+              <td>{{.RootFSSizeBytes}}</td>
+              <td><button class="ghost" type="button" disabled>Delete</button></td>
+            </tr>
           {{end}}
           </tbody>
         </table>
@@ -892,6 +1164,135 @@ const pageHTML = `<!doctype html>
       {{end}}
     </div>
   </main>
+  <script>
+    const buildStatus = document.getElementById("build-status");
+    if (buildStatus) {
+      const buildID = buildStatus.dataset.buildId;
+      const stateEl = document.getElementById("build-state");
+      const lineEl = document.getElementById("build-last-line");
+      const errEl = document.getElementById("build-error");
+      const timingBody = document.getElementById("build-timing-body");
+      function renderBuildTimings(timings) {
+        if (!Array.isArray(timings)) return;
+        timingBody.replaceChildren();
+        for (const timing of timings) {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          const duration = document.createElement("td");
+          const status = document.createElement("td");
+          name.textContent = timing.name || "";
+          duration.textContent = String(timing.duration_ms || 0) + "ms";
+          status.textContent = (timing.status || "") + (timing.error ? " " + timing.error : "");
+          tr.appendChild(name);
+          tr.appendChild(duration);
+          tr.appendChild(status);
+          timingBody.appendChild(tr);
+        }
+      }
+      async function pollBuild() {
+        try {
+          const res = await fetch("/build/status?id=" + encodeURIComponent(buildID));
+          if (!res.ok) throw new Error(await res.text());
+          const job = await res.json();
+          stateEl.textContent = job.state || "";
+          lineEl.textContent = job.last_line || "";
+          renderBuildTimings(job.build_timings);
+          if (job.error) {
+            errEl.style.display = "block";
+            errEl.textContent = job.error;
+          }
+          if (job.state === "done" || job.state === "error") return;
+        } catch (err) {
+          stateEl.textContent = "poll failed";
+          lineEl.textContent = err.message;
+        }
+        window.setTimeout(pollBuild, 1000);
+      }
+      pollBuild();
+    }
+  </script>
+</body>
+</html>`
+
+const buildsHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orca Builds</title>
+  <style>
+    :root { color-scheme: light; --line: #d8dee7; --muted: #667085; --ink: #111827; --bg: #f3f5f8; --panel: #fff; --accent: #1769aa; --bad: #a62929; --good: #176b3a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; justify-content: space-between; align-items: baseline; }
+    main { padding: 18px 24px 32px; display: grid; gap: 14px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    h1 { margin: 0; font-size: 20px; }
+    h2 { margin: 0 0 12px; font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; }
+    code, pre { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    pre { margin: 0; max-width: 760px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    a { color: var(--accent); }
+    .muted { color: var(--muted); }
+    .error { border-color: #e0a0a0; color: var(--bad); background: #fff5f5; }
+    .state { display: inline-block; min-width: 72px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; text-align: center; font-size: 12px; background: #fbfcfe; }
+    .running { color: #8a5a00; border-color: #e3b85c; background: #fff8e7; }
+    .done { color: var(--good); border-color: #8cc49e; background: #f0faf3; }
+    .error-state { color: var(--bad); border-color: #e0a0a0; background: #fff5f5; }
+    .topline { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Orca Builds</h1>
+    <div><a href="/">Sandbox</a> <span class="muted">updated {{.Now}}</span></div>
+  </header>
+  <main>
+    {{if .Error}}<section class="error">{{.Error}}</section>{{end}}
+    <section>
+      <div class="topline">
+        <h2>Build Jobs</h2>
+        <div class="muted">{{len .Builds}} jobs</div>
+      </div>
+      {{if .Builds}}
+      <table>
+        <thead><tr><th>Image</th><th>State</th><th>Started</th><th>Finished</th><th>Last line</th><th>Steps</th></tr></thead>
+        <tbody>
+        {{range .Builds}}
+          <tr>
+            <td><code>{{.Image}}</code><br><span class="muted">{{.ID}}</span></td>
+            <td><span class="state {{.State}}{{if eq .State "error"}}-state{{end}}">{{.State}}</span></td>
+            <td><code>{{.StartedAt}}</code></td>
+            <td><code>{{.FinishedAt}}</code></td>
+            <td><pre>{{.LastLine}}{{if .Error}}
+{{.Error}}{{end}}</pre></td>
+            <td>
+              <details>
+                <summary>{{len .Timings}} steps</summary>
+                <table>
+                  <tbody>
+                  {{range .Timings}}
+                    <tr><td>{{.Name}}</td><td>{{.DurationMS}}ms</td><td>{{.Status}}{{if .Error}} {{.Error}}{{end}}</td></tr>
+                  {{end}}
+                  </tbody>
+                </table>
+              </details>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}<div class="muted">No builds started in this service process.</div>{{end}}
+    </section>
+  </main>
+  <script>
+    const hasRunning = Array.from(document.querySelectorAll(".state")).some((el) => {
+      return el.textContent === "queued" || el.textContent === "running";
+    });
+    if (hasRunning) window.setTimeout(() => window.location.reload(), 2500);
+  </script>
 </body>
 </html>`
 
@@ -909,7 +1310,7 @@ const envHTML = `<!doctype html>
     main { display: grid; grid-template-columns: 1fr 360px; height: calc(100vh - 43px); min-height: 0; }
     #terminal { min-height: 0; padding: 8px; overflow: hidden; }
     #terminal .xterm { height: 100%; }
-    aside { display: grid; grid-template-rows: auto auto 1fr; gap: 12px; padding: 12px; border-left: 1px solid #30363d; background: #151b23; min-width: 0; overflow: auto; }
+    aside { display: grid; grid-auto-rows: max-content; gap: 12px; padding: 12px; border-left: 1px solid #30363d; background: #151b23; min-width: 0; overflow: auto; }
     #status { color: #8b949e; font: 12px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .panel { display: grid; gap: 8px; }
     label { color: #8b949e; font-size: 12px; font-weight: 650; }
@@ -929,6 +1330,8 @@ const envHTML = `<!doctype html>
     td:last-child, th:last-child { text-align: right; }
     details { color: #8b949e; }
     summary { cursor: pointer; font-size: 12px; }
+    #env-logs { height: 220px; min-height: 160px; border: 1px solid #30363d; border-radius: 6px; padding: 6px; overflow: hidden; background: #0d1117; }
+    #env-logs .xterm { height: 100%; }
     .ok { color: #7ee787; }
     .err { color: #ffb4ab; }
     code { color: #9fc7ee; }
@@ -977,6 +1380,10 @@ const envHTML = `<!doctype html>
         </details>
         <div id="timing-empty" style="color:#8b949e;font-size:12px;{{if .HasRunStats}}display:none{{end}}">Timings appear after creating or resuming an env from this page.</div>
       </section>
+      <section class="panel">
+        <h2>Env Logs</h2>
+        <div id="env-logs"></div>
+      </section>
       <form class="panel" method="post" action="/resume" id="resumeForm">
         <input type="hidden" name="env_id" value="{{.EnvID}}">
         <label>Orca run command</label>
@@ -1009,6 +1416,7 @@ const envHTML = `<!doctype html>
     const keyTimingsBody = document.getElementById("key-timings-body");
     const allTimingsBody = document.getElementById("all-timings-body");
     const timingEmpty = document.getElementById("timing-empty");
+    const envLogsElement = document.getElementById("env-logs");
     const keyTimingNames = [
       "attach_nbd_device",
       "sideload_orca_init",
@@ -1030,6 +1438,22 @@ const envHTML = `<!doctype html>
       }
     });
     const fitAddon = new FitAddon.FitAddon();
+    const logTerm = new Terminal({
+      cursorBlink: false,
+      cursorStyle: "bar",
+      convertEol: true,
+      disableStdin: true,
+      fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
+      fontSize: 12,
+      scrollback: 3000,
+      theme: {
+        background: "#0d1117",
+        foreground: "#dfe8f1",
+        cursor: "#0d1117",
+        selectionBackground: "#264f78"
+      }
+    });
+    const logFitAddon = new FitAddon.FitAddon();
     const pollIntervalMS = 100;
     let offset = 0;
     let sessionClosed = !sessionID || !nodeID;
@@ -1038,11 +1462,30 @@ const envHTML = `<!doctype html>
     term.loadAddon(fitAddon);
     term.open(document.getElementById("terminal"));
     fitAddon.fit();
+    logTerm.loadAddon(logFitAddon);
+    logTerm.open(envLogsElement);
+    logFitAddon.fit();
     term.focus();
-    window.addEventListener("resize", () => fitAddon.fit());
+    window.addEventListener("resize", () => {
+      fitAddon.fit();
+      logFitAddon.fit();
+    });
 
     function setStatus(text) {
       status.textContent = text;
+    }
+    function appendLogs(output) {
+      if (!output) return;
+      const lines = output.split(/\r?\n/).filter((line) =>
+        line.includes("orca-init:") ||
+        line.includes("orca-bg:") ||
+        line.includes("Dock HTTP Api listening") ||
+        line.includes("Workspace Server listening") ||
+        line.includes("Published to JetBrains Relay") ||
+        line.includes("Join this workspace using URL")
+      );
+      if (!lines.length) return;
+      logTerm.write(lines.join("\r\n") + "\r\n");
     }
     function parseTimings(raw) {
       if (!raw) return [];
@@ -1133,7 +1576,10 @@ const envHTML = `<!doctype html>
         }
         const out = await res.json();
         offset = out.offset || offset;
-        if (out.output) term.write(out.output);
+        if (out.output) {
+          term.write(out.output);
+          appendLogs(out.output);
+        }
         if (out.done) {
           sessionClosed = true;
           setStatus("exited; commit before resume");

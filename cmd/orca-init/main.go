@@ -114,7 +114,7 @@ func runTTY() {
 	} else {
 		logf("started env command=%q workdir=%q user=%q", command, workdir, username)
 		env = append(env, "ORCA_ENV_COMMAND="+command)
-		cmd = exec.Command("/bin/sh", "-lc", `(/bin/sh -lc "$ORCA_ENV_COMMAND" </dev/null) & exec /bin/sh -i`)
+		cmd = exec.Command("/bin/sh", "-lc", `(/bin/sh -lc "$ORCA_ENV_COMMAND" </dev/null 2>&1 | while IFS= read -r line; do printf 'orca-bg: %s\n' "$line"; done) & exec /bin/sh -i`)
 	}
 	cmd.Env = env
 	applyCredential(cmd, credential)

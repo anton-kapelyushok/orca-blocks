@@ -298,6 +298,29 @@ FROM envs WHERE env_id = $1`, envID)
 	return out, nil
 }
 
+func (r *PostgresRepo) ListEnvs(ctx context.Context) ([]Env, error) {
+	rows, err := r.pool.Query(ctx, `
+SELECT env_id, base_image_id, image_ref, volume_id, latest_snapshot_id
+FROM envs
+ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Env
+	for rows.Next() {
+		var env Env
+		if err := rows.Scan(&env.EnvID, &env.BaseImageID, &env.ImageRef, &env.VolumeID, &env.LatestSnapshotID); err != nil {
+			return nil, err
+		}
+		out = append(out, env)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *PostgresRepo) UpdateEnvSnapshot(ctx context.Context, envID, snapshotID string) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE envs

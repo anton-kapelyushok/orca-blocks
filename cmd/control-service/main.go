@@ -65,7 +65,11 @@ func main() {
 	mux.HandleFunc("GET /volumes/{id}", a.getVolume)
 	mux.HandleFunc("GET /images", a.listImages)
 	mux.HandleFunc("POST /buildImage", a.buildImage)
+	mux.HandleFunc("POST /builds", a.startBuild)
+	mux.HandleFunc("GET /builds", a.listBuilds)
+	mux.HandleFunc("GET /builds/{id}", a.getBuild)
 	mux.HandleFunc("GET /getImageVolume", a.getImageVolume)
+	mux.HandleFunc("GET /envs", a.listEnvs)
 	mux.HandleFunc("GET /envs/{id}", a.getEnv)
 	mux.HandleFunc("POST /startEnv", a.startEnv)
 	mux.HandleFunc("POST /resumeEnv", a.resumeEnv)
@@ -223,6 +227,52 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, out)
 }
 
+func (a *app) startBuild(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	status, out, err := a.postJSON(r.Context(), a.baseImageURL+"/builds", raw)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, status, out)
+}
+
+func (a *app) getBuild(w http.ResponseWriter, r *http.Request) {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, a.baseImageURL+"/builds/"+r.PathValue("id"), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	a.proxyJSON(w, req)
+}
+
+func (a *app) listBuilds(w http.ResponseWriter, r *http.Request) {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, a.baseImageURL+"/builds", nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+}
+
 func (a *app) listImages(w http.ResponseWriter, r *http.Request) {
 	images, err := a.repo.ListBaseImages(r.Context())
 	if err != nil {
@@ -230,6 +280,15 @@ func (a *app) listImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, images)
+}
+
+func (a *app) listEnvs(w http.ResponseWriter, r *http.Request) {
+	envs, err := a.repo.ListEnvs(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, envs)
 }
 
 func (a *app) getImageVolume(w http.ResponseWriter, r *http.Request) {

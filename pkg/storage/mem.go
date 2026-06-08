@@ -143,6 +143,16 @@ func (r *MemRepo) GetEnv(_ context.Context, envID string) (Env, error) {
 	return env, nil
 }
 
+func (r *MemRepo) ListEnvs(_ context.Context) ([]Env, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]Env, 0, len(r.envs))
+	for _, env := range r.envs {
+		out = append(out, env)
+	}
+	return out, nil
+}
+
 func (r *MemRepo) UpdateEnvSnapshot(_ context.Context, envID, snapshotID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

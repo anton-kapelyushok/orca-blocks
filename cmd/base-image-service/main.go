@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anton-k/orca-blocks/pkg/storage"
@@ -25,6 +27,8 @@ type app struct {
 	workDir          string
 	containerRuntime string
 	defaultRootFSMB  int64
+	mu               sync.Mutex
+	builds           map[string]*buildJob
 }
 
 type buildTiming struct {
@@ -39,17 +43,39 @@ type buildLogger struct {
 	image   string
 	started time.Time
 	steps   []buildTiming
+	job     *buildJob
 }
 
-func newBuildLogger(image string) *buildLogger {
-	b := &buildLogger{image: image, started: time.Now()}
-	log.Printf("buildImage image=%s starting", image)
+type buildJob struct {
+	ID           string         `json:"id"`
+	Image        string         `json:"image"`
+	RootFSSizeMB int64          `json:"rootfs_size_mb"`
+	State        string         `json:"state"`
+	LastLine     string         `json:"last_line"`
+	StartedAt    string         `json:"started_at"`
+	FinishedAt   string         `json:"finished_at,omitempty"`
+	Error        string         `json:"error,omitempty"`
+	Result       map[string]any `json:"result,omitempty"`
+	Timings      []buildTiming  `json:"build_timings,omitempty"`
+}
+
+func newBuildLogger(image string, job *buildJob) *buildLogger {
+	b := &buildLogger{image: image, started: time.Now(), job: job}
+	b.logf("buildImage image=%s starting", image)
 	return b
+}
+
+func (b *buildLogger) logf(format string, args ...any) {
+	line := fmt.Sprintf(format, args...)
+	log.Print(line)
+	if b.job != nil {
+		b.job.setLastLine(line)
+	}
 }
 
 func (b *buildLogger) step(name string, fn func() error) error {
 	started := time.Now()
-	log.Printf("buildImage image=%s step=%s starting", b.image, name)
+	b.logf("buildImage image=%s step=%s starting", b.image, name)
 	err := fn()
 	timing := buildTiming{
 		Name:       name,
@@ -60,13 +86,30 @@ func (b *buildLogger) step(name string, fn func() error) error {
 	if err != nil {
 		timing.Status = "error"
 		timing.Error = err.Error()
-		log.Printf("buildImage image=%s step=%s error duration_ms=%d err=%v", b.image, name, timing.DurationMS, err)
+		b.logf("buildImage image=%s step=%s error duration_ms=%d err=%v", b.image, name, timing.DurationMS, err)
 	} else {
-		log.Printf("buildImage image=%s step=%s ok duration_ms=%d", b.image, name, timing.DurationMS)
+		b.logf("buildImage image=%s step=%s ok duration_ms=%d", b.image, name, timing.DurationMS)
 	}
 	b.steps = append(b.steps, timing)
+	if b.job != nil {
+		b.job.setTimings(b.steps)
+	}
 	return err
 }
+
+func (j *buildJob) setLastLine(line string) {
+	buildJobsMu.Lock()
+	defer buildJobsMu.Unlock()
+	j.LastLine = line
+}
+
+func (j *buildJob) setTimings(timings []buildTiming) {
+	buildJobsMu.Lock()
+	defer buildJobsMu.Unlock()
+	j.Timings = append([]buildTiming(nil), timings...)
+}
+
+var buildJobsMu sync.Mutex
 
 func main() {
 	ctx := context.Background()
@@ -97,6 +140,7 @@ func main() {
 		workDir:          getenv("WORK_DIR", "/work"),
 		containerRuntime: getenv("CONTAINER_RUNTIME", "docker"),
 		defaultRootFSMB:  mustInt64(getenv("ROOTFS_SIZE_MB", "2048")),
+		builds:           map[string]*buildJob{},
 	}
 	must(os.MkdirAll(a.workDir, 0o755))
 
@@ -105,6 +149,9 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 	})
 	mux.HandleFunc("POST /buildImage", a.buildImage)
+	mux.HandleFunc("POST /builds", a.startBuild)
+	mux.HandleFunc("GET /builds", a.listBuilds)
+	mux.HandleFunc("GET /builds/{id}", a.getBuild)
 	mux.HandleFunc("GET /getImageVolume", a.getImageVolume)
 
 	addr := ":" + getenv("PORT", "8080")
@@ -112,41 +159,135 @@ func main() {
 	must(http.ListenAndServe(addr, logRequests(mux)))
 }
 
+type buildImageRequest struct {
+	Image        string `json:"image"`
+	RootFSSizeMB int64  `json:"rootfs_size_mb"`
+	ChunkSize    int64  `json:"chunk_size"`
+}
+
 func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Image        string `json:"image"`
-		RootFSSizeMB int64  `json:"rootfs_size_mb"`
-		ChunkSize    int64  `json:"chunk_size"`
-	}
+	var req buildImageRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Image == "" {
+	out, err := a.runBuild(r.Context(), req, nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (a *app) startBuild(w http.ResponseWriter, r *http.Request) {
+	var req buildImageRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Image) == "" {
 		http.Error(w, "image is required", http.StatusBadRequest)
 		return
 	}
 	if req.RootFSSizeMB == 0 {
 		req.RootFSSizeMB = a.defaultRootFSMB
 	}
+	job := &buildJob{
+		ID:           "build-" + uuid.NewString(),
+		Image:        req.Image,
+		RootFSSizeMB: req.RootFSSizeMB,
+		State:        "queued",
+		LastLine:     "queued",
+		StartedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	a.mu.Lock()
+	a.builds[job.ID] = job
+	a.mu.Unlock()
 
-	build := newBuildLogger(req.Image)
-	result, err := a.materializeImage(r.Context(), req.Image, req.RootFSSizeMB, build)
-	if err != nil {
-		writeError(w, err)
+	go func() {
+		buildJobsMu.Lock()
+		job.State = "running"
+		job.LastLine = "starting build"
+		buildJobsMu.Unlock()
+		out, err := a.runBuild(context.Background(), req, job)
+		buildJobsMu.Lock()
+		defer buildJobsMu.Unlock()
+		job.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		if err != nil {
+			job.State = "error"
+			job.Error = err.Error()
+			job.LastLine = err.Error()
+			return
+		}
+		job.State = "done"
+		job.Result = out
+		job.LastLine = fmt.Sprintf("built %s as %s", out["image_ref"], out["base_image_id"])
+	}()
+
+	writeJSON(w, http.StatusAccepted, jobSnapshot(job))
+}
+
+func (a *app) getBuild(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	job := a.builds[r.PathValue("id")]
+	a.mu.Unlock()
+	if job == nil {
+		http.Error(w, "build not found", http.StatusNotFound)
 		return
+	}
+	writeJSON(w, http.StatusOK, jobSnapshot(job))
+}
+
+func (a *app) listBuilds(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	jobs := make([]*buildJob, 0, len(a.builds))
+	for _, job := range a.builds {
+		jobs = append(jobs, job)
+	}
+	a.mu.Unlock()
+	out := make([]buildJob, 0, len(jobs))
+	for _, job := range jobs {
+		out = append(out, jobSnapshot(job))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt > out[j].StartedAt })
+	writeJSON(w, http.StatusOK, out)
+}
+
+func jobSnapshot(job *buildJob) buildJob {
+	buildJobsMu.Lock()
+	defer buildJobsMu.Unlock()
+	out := *job
+	if job.Result != nil {
+		out.Result = make(map[string]any, len(job.Result))
+		for k, v := range job.Result {
+			out.Result[k] = v
+		}
+	}
+	out.Timings = append([]buildTiming(nil), job.Timings...)
+	return out
+}
+
+func (a *app) runBuild(ctx context.Context, req buildImageRequest, job *buildJob) (map[string]any, error) {
+	if req.Image == "" {
+		return nil, fmt.Errorf("image is required")
+	}
+	if req.RootFSSizeMB == 0 {
+		req.RootFSSizeMB = a.defaultRootFSMB
+	}
+
+	build := newBuildLogger(req.Image, job)
+	result, err := a.materializeImage(ctx, req.Image, req.RootFSSizeMB, build)
+	if err != nil {
+		return nil, err
 	}
 	defer os.RemoveAll(result.dir)
 
 	file, err := os.Open(result.rootfsPath)
 	if err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
 
 	baseImageID := "base-" + uuid.NewString()
@@ -154,25 +295,23 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 	var volume storage.Volume
 	if err := build.step("create_volume", func() error {
 		var err error
-		volume, err = a.backend.CreateVolume(r.Context(), volumeID, info.Size(), req.ChunkSize)
+		volume, err = a.backend.CreateVolume(ctx, volumeID, info.Size(), req.ChunkSize)
 		return err
 	}); err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
 	var snapshot storage.Snapshot
 	if err := build.step("import_rootfs_snapshot", func() error {
 		var err error
-		snapshot, err = a.importFile(r.Context(), volume, file)
+		snapshot, err = a.importFile(ctx, volume, file, build)
 		return err
 	}); err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
 	var baseImage storage.BaseImage
 	if err := build.step("record_base_image", func() error {
 		var err error
-		baseImage, err = a.repo.CreateBaseImage(r.Context(), storage.BaseImage{
+		baseImage, err = a.repo.CreateBaseImage(ctx, storage.BaseImage{
 			BaseImageID:     baseImageID,
 			ImageRef:        req.Image,
 			ImageDigest:     result.digest,
@@ -187,13 +326,12 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		})
 		return err
 	}); err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
 	totalMS := time.Since(build.started).Milliseconds()
-	log.Printf("buildImage image=%s complete base_image_id=%s volume_id=%s snapshot_id=%s duration_ms=%d", req.Image, baseImage.BaseImageID, baseImage.VolumeID, baseImage.SnapshotID, totalMS)
+	build.logf("buildImage image=%s complete base_image_id=%s volume_id=%s snapshot_id=%s duration_ms=%d", req.Image, baseImage.BaseImageID, baseImage.VolumeID, baseImage.SnapshotID, totalMS)
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	return map[string]any{
 		"base_image_id":     baseImage.BaseImageID,
 		"image_ref":         baseImage.ImageRef,
 		"image_digest":      baseImage.ImageDigest,
@@ -207,7 +345,7 @@ func (a *app) buildImage(w http.ResponseWriter, r *http.Request) {
 		"user":              baseImage.User,
 		"duration_ms":       totalMS,
 		"build_timings":     build.steps,
-	})
+	}, nil
 }
 
 func (a *app) getImageVolume(w http.ResponseWriter, r *http.Request) {
@@ -271,7 +409,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 
 	if err := build.step("pull_image", func() error {
 		if _, err := output(ctx, a.containerRuntime, "image", "inspect", image); err == nil {
-			log.Printf("buildImage image=%s already available locally", image)
+			build.logf("buildImage image=%s already available locally", image)
 			return nil
 		}
 		return run(ctx, a.containerRuntime, "pull", image)
@@ -389,7 +527,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 	return materializedImage{dir: dir, rootfsPath: rootfsPath, digest: digest, config: config}, nil
 }
 
-func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.File) (storage.Snapshot, error) {
+func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.File, build *buildLogger) (storage.Snapshot, error) {
 	session, err := a.backend.StartSession(ctx, volume.VolumeID)
 	if err != nil {
 		return storage.Snapshot{}, err
@@ -400,7 +538,7 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 	var offset int64
 	var chunks int64
 	lastLog := time.Now()
-	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s starting chunk_size=%d", volume.VolumeID, session.ID, volume.ChunkSize)
+	build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s starting chunk_size=%d", volume.VolumeID, session.ID, volume.ChunkSize)
 	for {
 		n, readErr := io.ReadFull(file, buf)
 		if readErr != nil && !errors.Is(readErr, io.ErrUnexpectedEOF) && !errors.Is(readErr, io.EOF) {
@@ -413,7 +551,7 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 			offset += int64(n)
 			chunks++
 			if chunks%16 == 0 || time.Since(lastLog) > 2*time.Second {
-				log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s progress chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
+				build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s progress chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
 				lastLog = time.Now()
 			}
 		}
@@ -421,12 +559,12 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 			break
 		}
 	}
-	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committing chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
+	build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committing chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
 	snapshot, err := a.backend.Commit(ctx, session.ID)
 	if err != nil {
 		return storage.Snapshot{}, err
 	}
-	log.Printf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committed snapshot_id=%s chunks=%d bytes=%d", volume.VolumeID, session.ID, snapshot.SnapshotID, chunks, offset)
+	build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committed snapshot_id=%s chunks=%d bytes=%d", volume.VolumeID, session.ID, snapshot.SnapshotID, chunks, offset)
 	return snapshot, nil
 }
 
