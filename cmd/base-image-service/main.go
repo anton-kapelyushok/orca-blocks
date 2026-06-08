@@ -52,6 +52,7 @@ type buildJob struct {
 	RootFSSizeMB int64          `json:"rootfs_size_mb"`
 	State        string         `json:"state"`
 	LastLine     string         `json:"last_line"`
+	Logs         []string       `json:"logs,omitempty"`
 	StartedAt    string         `json:"started_at"`
 	FinishedAt   string         `json:"finished_at,omitempty"`
 	Error        string         `json:"error,omitempty"`
@@ -101,6 +102,10 @@ func (j *buildJob) setLastLine(line string) {
 	buildJobsMu.Lock()
 	defer buildJobsMu.Unlock()
 	j.LastLine = line
+	j.Logs = append(j.Logs, time.Now().UTC().Format(time.RFC3339)+" "+line)
+	if len(j.Logs) > 500 {
+		j.Logs = append([]string(nil), j.Logs[len(j.Logs)-500:]...)
+	}
 }
 
 func (j *buildJob) setTimings(timings []buildTiming) {
@@ -262,6 +267,7 @@ func jobSnapshot(job *buildJob) buildJob {
 		}
 	}
 	out.Timings = append([]buildTiming(nil), job.Timings...)
+	out.Logs = append([]string(nil), job.Logs...)
 	return out
 }
 
@@ -447,7 +453,7 @@ func (a *app) materializeImage(ctx context.Context, image string, rootFSSizeMB i
 		}
 	}()
 	if err := build.step("export_rootfs_tar", func() error {
-		return runToFile(ctx, rootfsTar, a.containerRuntime, "export", cid)
+		return runToFileWithProgress(ctx, rootfsTar, build, "export_rootfs_tar", a.containerRuntime, "export", cid)
 	}); err != nil {
 		return materializedImage{}, err
 	}
@@ -560,7 +566,17 @@ func (a *app) importFile(ctx context.Context, volume storage.Volume, file *os.Fi
 		}
 	}
 	build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s committing chunks=%d bytes=%d", volume.VolumeID, session.ID, chunks, offset)
-	snapshot, err := a.backend.Commit(ctx, session.ID)
+	lastCommitLog := time.Now()
+	snapshot, err := a.backend.CommitWithOptions(ctx, session.ID, storage.CommitOptions{
+		OnProgress: func(p storage.CommitProgress) {
+			if p.Phase == "chunks" && time.Since(lastCommitLog) < 2*time.Second && p.DoneChunks < p.TotalChunks {
+				return
+			}
+			lastCommitLog = time.Now()
+			build.logf("buildImage import_rootfs_snapshot volume_id=%s session_id=%s commit phase=%s chunks=%d/%d uploaded=%d skipped=%d bytes=%d manifest_items=%d snapshot_id=%s",
+				volume.VolumeID, session.ID, p.Phase, p.DoneChunks, p.TotalChunks, p.Uploaded, p.Skipped, p.Bytes, p.ManifestItems, p.SnapshotID)
+		},
+	})
 	if err != nil {
 		return storage.Snapshot{}, err
 	}
@@ -659,6 +675,40 @@ func runToFile(ctx context.Context, dst, name string, args ...string) error {
 	cmd.Stdout = out
 	cmd.Stderr = log.Writer()
 	return cmd.Run()
+}
+
+func runToFileWithProgress(ctx context.Context, dst string, build *buildLogger, stepName, name string, args ...string) error {
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = out
+	cmd.Stderr = log.Writer()
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if info, err := os.Stat(dst); err == nil {
+					build.logf("buildImage step=%s progress file=%s bytes=%d", stepName, filepath.Base(dst), info.Size())
+				}
+			}
+		}
+	}()
+
+	err = cmd.Run()
+	if info, statErr := os.Stat(dst); statErr == nil {
+		build.logf("buildImage step=%s complete file=%s bytes=%d", stepName, filepath.Base(dst), info.Size())
+	}
+	return err
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {

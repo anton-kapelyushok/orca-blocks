@@ -53,3 +53,33 @@ Join this workspace using URL:             29021ms
 ## Orca
 
 Skipped for now. The attempted 10 GiB base-image build exceeded the current control-service request timeout during base image import/commit, so the Orca runtime leg was not measured in this run.
+
+## 2026-06-08: Docker vs Docker-on-NBD vs Orca
+
+Host: DigitalOcean Linux VM, `root@178.128.247.74`
+Image already present locally.
+Orca config: `1 vCPU / 3072 MiB`
+Docker-on-NBD config: isolated temporary `containerd` + `dockerd`, Docker content/data roots on an ext4 filesystem backed by local NBD range mode.
+
+```text
+Target              Join URL     Dock HTTP    Workspace Server
+Docker cold-cache    12.54s        7.20s          11.47s
+Docker warm-cache    10.79s        5.46s           8.66s
+Docker-on-NBD        13.27s        7.94s          11.15s
+Orca                 56.49s       31.33s          52.48s
+```
+
+Docker-on-NBD NBD traffic:
+
+```text
+reads:       14,896 ops / 1.26 GiB
+writes:      40,348 ops / 4.60 GiB
+flushes:        827
+workdir du:    4.2 GiB
+```
+
+Interpretation:
+
+- Docker-on-NBD is only slightly slower than Docker cold-cache for this workload.
+- Therefore, NBD by itself does not explain Orca's `~56s` JetBrains startup.
+- The remaining gap is more likely the full Firecracker guest + Orca block/session path, not merely "Docker storage on an NBD block device".

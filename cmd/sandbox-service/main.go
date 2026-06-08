@@ -79,6 +79,7 @@ type buildJobStatus struct {
 	RootFSSizeMB int64          `json:"rootfs_size_mb"`
 	State        string         `json:"state"`
 	LastLine     string         `json:"last_line"`
+	Logs         []string       `json:"logs"`
 	StartedAt    string         `json:"started_at"`
 	FinishedAt   string         `json:"finished_at"`
 	Error        string         `json:"error"`
@@ -1027,6 +1028,9 @@ const pageHTML = `<!doctype html>
           {{end}}
           </tbody>
         </table>
+        <h2 style="margin-top:12px">Build Logs</h2>
+        <pre id="build-log-lines">{{range .BuildJob.Logs}}{{.}}
+{{end}}</pre>
       </section>
       {{end}}
 
@@ -1172,6 +1176,7 @@ const pageHTML = `<!doctype html>
       const lineEl = document.getElementById("build-last-line");
       const errEl = document.getElementById("build-error");
       const timingBody = document.getElementById("build-timing-body");
+      const logLines = document.getElementById("build-log-lines");
       function renderBuildTimings(timings) {
         if (!Array.isArray(timings)) return;
         timingBody.replaceChildren();
@@ -1189,6 +1194,11 @@ const pageHTML = `<!doctype html>
           timingBody.appendChild(tr);
         }
       }
+      function renderBuildLogs(logs) {
+        if (!Array.isArray(logs) || !logLines) return;
+        logLines.textContent = logs.join("\n");
+        logLines.scrollTop = logLines.scrollHeight;
+      }
       async function pollBuild() {
         try {
           const res = await fetch("/build/status?id=" + encodeURIComponent(buildID));
@@ -1197,6 +1207,7 @@ const pageHTML = `<!doctype html>
           stateEl.textContent = job.state || "";
           lineEl.textContent = job.last_line || "";
           renderBuildTimings(job.build_timings);
+          renderBuildLogs(job.logs);
           if (job.error) {
             errEl.style.display = "block";
             errEl.textContent = job.error;
@@ -1258,7 +1269,7 @@ const buildsHTML = `<!doctype html>
       </div>
       {{if .Builds}}
       <table>
-        <thead><tr><th>Image</th><th>State</th><th>Started</th><th>Finished</th><th>Last line</th><th>Steps</th></tr></thead>
+        <thead><tr><th>Image</th><th>State</th><th>Started</th><th>Finished</th><th>Last line</th><th>Details</th></tr></thead>
         <tbody>
         {{range .Builds}}
           <tr>
@@ -1278,6 +1289,11 @@ const buildsHTML = `<!doctype html>
                   {{end}}
                   </tbody>
                 </table>
+              </details>
+              <details>
+                <summary>{{len .Logs}} log lines</summary>
+                <pre>{{range .Logs}}{{.}}
+{{end}}</pre>
               </details>
             </td>
           </tr>

@@ -27,6 +27,19 @@ type Backend struct {
 
 type CommitOptions struct {
 	UploadBatchChunks int
+	OnProgress        func(CommitProgress)
+}
+
+type CommitProgress struct {
+	Phase         string
+	DoneChunks    int
+	TotalChunks   int
+	Uploaded      int
+	Skipped       int
+	Bytes         int64
+	SnapshotID    string
+	ManifestKey   string
+	ManifestItems int
 }
 
 type Session struct {
@@ -196,37 +209,73 @@ func (b *Backend) CommitWithOptions(ctx context.Context, sessionID string, opts 
 		dirtyIndexes = append(dirtyIndexes, idx)
 	}
 	sort.Slice(dirtyIndexes, func(i, j int) bool { return dirtyIndexes[i] < dirtyIndexes[j] })
+	progress := func(p CommitProgress) {
+		if opts.OnProgress != nil {
+			opts.OnProgress(p)
+		}
+	}
+	progress(CommitProgress{Phase: "start", TotalChunks: len(dirtyIndexes), ManifestItems: len(manifest)})
+	doneChunks := 0
+	uploadedChunks := 0
+	skippedChunks := 0
+	var committedBytes int64
 	for start := 0; start < len(dirtyIndexes); start += batchSize {
 		end := start + batchSize
 		if end > len(dirtyIndexes) {
 			end = len(dirtyIndexes)
 		}
-		if err := b.commitDirtyBatch(ctx, session, dirtyIndexes[start:end], manifest); err != nil {
+		stats, err := b.commitDirtyBatch(ctx, session, dirtyIndexes[start:end], manifest)
+		if err != nil {
 			return Snapshot{}, err
 		}
+		doneChunks += stats.chunks
+		uploadedChunks += stats.uploaded
+		skippedChunks += stats.skipped
+		committedBytes += stats.bytes
+		progress(CommitProgress{
+			Phase:         "chunks",
+			DoneChunks:    doneChunks,
+			TotalChunks:   len(dirtyIndexes),
+			Uploaded:      uploadedChunks,
+			Skipped:       skippedChunks,
+			Bytes:         committedBytes,
+			ManifestItems: len(manifest),
+		})
 	}
 
 	snapshotID := uuid.NewString()
 	manifestKey := manifestKey(snapshotID)
+	progress(CommitProgress{Phase: "save_manifest", DoneChunks: doneChunks, TotalChunks: len(dirtyIndexes), Uploaded: uploadedChunks, Skipped: skippedChunks, Bytes: committedBytes, SnapshotID: snapshotID, ManifestKey: manifestKey, ManifestItems: len(manifest)})
 	if err := b.saveManifest(ctx, manifestKey, manifest); err != nil {
 		return Snapshot{}, err
 	}
 	snapshot := Snapshot{SnapshotID: snapshotID, VolumeID: session.Volume.VolumeID, ManifestKey: manifestKey}
+	progress(CommitProgress{Phase: "record_snapshot", DoneChunks: doneChunks, TotalChunks: len(dirtyIndexes), Uploaded: uploadedChunks, Skipped: skippedChunks, Bytes: committedBytes, SnapshotID: snapshotID, ManifestKey: manifestKey, ManifestItems: len(manifest)})
 	if err := b.Repo.CreateSnapshot(ctx, snapshot); err != nil {
 		return Snapshot{}, err
 	}
+	progress(CommitProgress{Phase: "update_volume", DoneChunks: doneChunks, TotalChunks: len(dirtyIndexes), Uploaded: uploadedChunks, Skipped: skippedChunks, Bytes: committedBytes, SnapshotID: snapshotID, ManifestKey: manifestKey, ManifestItems: len(manifest)})
 	if err := b.Repo.UpdateLatestSnapshot(ctx, session.Volume.VolumeID, snapshotID); err != nil {
 		return Snapshot{}, err
 	}
 	session.BaseSnapshotID = snapshotID
 	session.BaseManifest = manifest
+	progress(CommitProgress{Phase: "clear_dirty", DoneChunks: doneChunks, TotalChunks: len(dirtyIndexes), Uploaded: uploadedChunks, Skipped: skippedChunks, Bytes: committedBytes, SnapshotID: snapshotID, ManifestKey: manifestKey, ManifestItems: len(manifest)})
 	if err := session.clearDirtyOverlay(); err != nil {
 		return Snapshot{}, err
 	}
+	progress(CommitProgress{Phase: "done", DoneChunks: doneChunks, TotalChunks: len(dirtyIndexes), Uploaded: uploadedChunks, Skipped: skippedChunks, Bytes: committedBytes, SnapshotID: snapshotID, ManifestKey: manifestKey, ManifestItems: len(manifest)})
 	return snapshot, nil
 }
 
-func (b *Backend) commitDirtyBatch(ctx context.Context, session *Session, indexes []int64, manifest Manifest) error {
+type commitBatchStats struct {
+	chunks   int
+	uploaded int
+	skipped  int
+	bytes    int64
+}
+
+func (b *Backend) commitDirtyBatch(ctx context.Context, session *Session, indexes []int64, manifest Manifest) (commitBatchStats, error) {
 	type dirtyChunk struct {
 		index int64
 		id    string
@@ -234,10 +283,11 @@ func (b *Backend) commitDirtyBatch(ctx context.Context, session *Session, indexe
 	}
 
 	batch := make([]dirtyChunk, 0, len(indexes))
+	var stats commitBatchStats
 	for _, idx := range indexes {
 		chunk, err := session.readDirtyChunk(idx, session.Volume.ChunkSize)
 		if err != nil {
-			return err
+			return stats, err
 		}
 		batch = append(batch, dirtyChunk{
 			index: idx,
@@ -250,19 +300,24 @@ func (b *Backend) commitDirtyBatch(ctx context.Context, session *Session, indexe
 		key := chunkKey(item.id)
 		exists, err := b.Store.Exists(ctx, key)
 		if err != nil {
-			return err
+			return stats, err
 		}
 		if !exists {
 			if err := b.Store.Put(ctx, key, item.bytes); err != nil {
-				return err
+				return stats, err
 			}
+			stats.uploaded++
+		} else {
+			stats.skipped++
 		}
 		if err := b.Cache.Put(item.id, item.bytes); err != nil {
-			return err
+			return stats, err
 		}
 		manifest[item.index] = item.id
+		stats.chunks++
+		stats.bytes += int64(len(item.bytes))
 	}
-	return nil
+	return stats, nil
 }
 
 func (b *Backend) Stop(sessionID string) error {

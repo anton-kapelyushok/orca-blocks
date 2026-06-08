@@ -1,0 +1,54 @@
+# Docker vs Orca Disk Benchmark
+
+Run: 2026-06-08T02:18Z
+Host: root@178.128.247.74
+Image: orca-disk-bench:bench-1780884666
+Config: size=128 MiB, sequential block=1 MiB, random block=4 KiB, random_ops=4096, io_depth=1
+Orca config: 1 vCPU, 3072 MiB memory
+
+## Results
+
+Docker, host cache dropped:
+
+    Mode          Throughput        IOPS      Duration    Notes
+    sequential    227 MiB/s          227        563 ms    Docker container filesystem, privileged cache drop
+    random          2 MiB/s          618       6619 ms    Cold host disk random reads are poor on this VM
+
+Docker, warm host cache:
+
+    Mode          Throughput        IOPS      Duration    Notes
+    sequential   3565 MiB/s         3565         35 ms    Page-cache hot
+    sequential   3593 MiB/s         3593         35 ms    Repeat read
+    random       1313 MiB/s       336325         12 ms    Page-cache hot
+    random       1121 MiB/s       287112         14 ms    Repeat read
+
+Orca, node chunk cache + guest cache dropped:
+
+    Mode          Throughput        IOPS      Duration    Notes
+    sequential     54 MiB/s           54       2342 ms    node-1 read
+    sequential     52 MiB/s           52       2429 ms    node-2 read
+    sequential     56 MiB/s           56       2276 ms    node-2 repeat
+    random          5 MiB/s         1304       3140 ms    node-1 read
+    random          4 MiB/s         1277       3206 ms    node-2 read
+    random          5 MiB/s         1439       2844 ms    node-2 repeat
+
+Summary:
+
+    Target             Sequential              Random
+    Docker cold         227 MiB/s                618 IOPS
+    Docker warm        3565-3593 MiB/s       287k-336k IOPS
+    Orca                 52-56 MiB/s          1277-1439 IOPS
+
+## Takeaway
+
+Sequential read is the clear Orca bottleneck:
+
+- Docker cold sequential is about 4x faster than Orca: 227 MiB/s vs 52-56 MiB/s.
+- Docker warm sequential is page-cache dominated and much faster than Orca.
+
+Random reads are more nuanced:
+
+- With host cache dropped, Docker random is worse than Orca on this VM: 618 IOPS vs 1277-1439 IOPS.
+- With warm host cache, Docker random is orders of magnitude faster because it is served from the host page cache.
+
+The fair interpretation is that Orca's current block path is hurting sequential throughput badly. Docker also benefits from the host page cache in normal warm runs, which Orca does not currently match across the Firecracker/NBD/userspace-storage boundary.

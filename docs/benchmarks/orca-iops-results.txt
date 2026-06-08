@@ -25,3 +25,18 @@ label	mode	mb_per_sec	iops	duration_ms	block_bytes	cache_hits	cache_misses	remot
 node-1-read-1	random	0	176	2897	4096	601	0	0	4727	7185
 node-2-read-2	random	0	147	3467	4096	611	9	9	5186	7902
 node-2-read-3	random	0	164	3105	4096	629	0	0	4783	7109
+
+orca-iops run 2026-06-08T02:12:57Z
+control_url=http://localhost:18080
+image=orca-disk-bench:bench-1780884666
+base_image_id=base-a12e329c-ab8e-4d4c-bd9c-6e1cc8c49046
+env_id=env-c6199aed-ca18-4965-a8ec-37c356f6b7df
+size_mb=128 random_ops=4096 io_depth=1 vcpus=1 memory_mib=3072
+
+label	mode	mb_per_sec	iops	duration_ms	block_bytes	cache_hits	cache_misses	remote_fetches	run_firecracker_ms	request_to_first_user_output_ms
+node-1-read-1	sequential	54	54	2342	1048576	1164	39	39	3984	7263
+node-2-read-2	sequential	52	52	2429	1048576	1163	40	40	3932	6518
+node-2-read-3	sequential	56	56	2276	1048576	1150	39	39	3926	6432
+node-1-read-1	random	5	1304	3140	4096	3998	26	26	4561	6919
+node-2-read-2	random	4	1277	3206	4096	3998	26	26	4797	7224
+node-2-read-3	random	5	1439	2844	4096	4004	20	20	4334	6482
