@@ -21,6 +21,7 @@ MEM_SIZE_MIB = int(os.environ.get("MEM_SIZE_MIB", "4096"))
 VCPU_COUNT = int(os.environ.get("VCPU_COUNT", "2"))
 GUEST_DNS = os.environ.get("GUEST_DNS", "1.1.1.1")
 DOCKER_RUN_ARGS = os.environ.get("DOCKER_RUN_ARGS", "")
+QEMU_KERNEL = Path(os.environ.get("QEMU_KERNEL", "/boot/vmlinuz-" + os.uname().release))
 
 
 def now_ms():
@@ -121,6 +122,9 @@ def image_inspect():
 
 
 def build_orca_init(init_bin):
+    if os.environ.get("ORCA_INIT_REUSE", "").lower() in {"1", "true", "yes", "on"} and init_bin.exists():
+        print("reusing existing orca-init at %s" % init_bin, flush=True)
+        return
     if not run("command -v go >/dev/null 2>&1", check=False):
         service = os.environ.get("ORCA_INIT_SOURCE_SERVICE", "node-1")
         run("docker compose cp %s:/orca-init %s" % (q(service), q(init_bin)))
@@ -244,6 +248,26 @@ def cleanup_tap(net):
     run("sudo ip link del %s >/dev/null 2>&1 || true" % q(net["tap"]), check=False)
 
 
+def image_rootfs_boot_args(image_cfg, net, extra=""):
+    workdir_arg = ""
+    if image_cfg["workdir"]:
+        workdir_arg = " orca.workdir_b64=%s" % b64(image_cfg["workdir"])
+    return (
+        "root=/dev/vda rw console=ttyS0 quiet loglevel=0 reboot=k panic=1 init=/init%s "
+        "orca.tty=1 orca.command_b64=%s orca.env_b64=%s orca.user_b64=%s%s "
+        "orca.net_ip=%s orca.net_gateway=%s orca.net_dns=%s"
+    ) % (
+        extra,
+        b64(ORCA_COMMAND),
+        b64("\n".join(image_cfg["env"])),
+        b64(image_cfg["user"]),
+        workdir_arg,
+        net["guest_cidr"],
+        net["host_ip"],
+        GUEST_DNS,
+    )
+
+
 def measure_firecracker_local(timeout_seconds):
     firecracker = ASSET_DIR / "firecracker"
     kernel = ASSET_DIR / "vmlinux"
@@ -275,22 +299,7 @@ def measure_firecracker_local(timeout_seconds):
     first_seen = {}
     process = None
     try:
-        workdir_arg = ""
-        if image_cfg["workdir"]:
-            workdir_arg = " orca.workdir_b64=%s" % b64(image_cfg["workdir"])
-        boot_args = (
-            "root=/dev/vda rw console=ttyS0 quiet loglevel=0 reboot=k panic=1 pci=off init=/init "
-            "orca.tty=1 orca.command_b64=%s orca.env_b64=%s orca.user_b64=%s%s "
-            "orca.net_ip=%s orca.net_gateway=%s orca.net_dns=%s"
-        ) % (
-            b64(ORCA_COMMAND),
-            b64("\n".join(image_cfg["env"])),
-            b64(image_cfg["user"]),
-            workdir_arg,
-            net["guest_cidr"],
-            net["host_ip"],
-            GUEST_DNS,
-        )
+        boot_args = image_rootfs_boot_args(image_cfg, net, " pci=off")
         config = {
             "boot-source": {
                 "kernel_image_path": str(kernel.resolve()),
@@ -370,6 +379,118 @@ def measure_firecracker_local(timeout_seconds):
         return {
             "kind": "firecracker-local",
             "error": "timeout" if process.poll() is None else "firecracker exited",
+            "elapsed_ms": now_ms() - start,
+            "first_seen_ms": first_seen,
+            "work_dir": str(run_dir),
+            "serial_log": str(serial_log),
+            "tini_warning": "Tini is not running as PID 1" in logs,
+        }
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        cleanup_tap(net)
+
+
+def measure_qemu_q35_local(timeout_seconds):
+    if not QEMU_KERNEL.exists():
+        return {
+            "kind": "qemu-q35-local",
+            "error": "missing QEMU kernel %s" % QEMU_KERNEL,
+            "elapsed_ms": 0,
+            "first_seen_ms": {},
+        }
+    if not Path("/dev/kvm").exists():
+        return {
+            "kind": "qemu-q35-local",
+            "error": "/dev/kvm is missing",
+            "elapsed_ms": 0,
+            "first_seen_ms": {},
+        }
+    cached_rootfs, image_cfg, init_bin = ensure_local_rootfs()
+    run_dir = Path(run("mktemp -d %s" % q(str(WORK_PARENT / "qemu.XXXXXX"))).strip())
+    rootfs = run_dir / "rootfs.ext4"
+    print("copying cached rootfs for local QEMU q35 run", flush=True)
+    run("cp --sparse=always --reflink=auto %s %s" % (q(cached_rootfs), q(rootfs)))
+    sideload_orca_init(rootfs, init_bin)
+    serial_log = run_dir / "serial.log"
+    net = setup_tap()
+    first_seen = {}
+    process = None
+    try:
+        args = [
+            "qemu-system-x86_64",
+            "-enable-kvm",
+            "-M",
+            "q35,accel=kvm",
+            "-cpu",
+            "host",
+            "-smp",
+            str(VCPU_COUNT),
+            "-m",
+            "%dM" % MEM_SIZE_MIB,
+            "-nodefaults",
+            "-no-user-config",
+            "-nographic",
+            "-no-reboot",
+            "-serial",
+            "stdio",
+            "-kernel",
+            str(QEMU_KERNEL),
+            "-append",
+            image_rootfs_boot_args(image_cfg, net),
+            "-drive",
+            "file=%s,format=raw,if=none,id=rootfs" % rootfs,
+            "-device",
+            "virtio-blk-pci,drive=rootfs",
+            "-netdev",
+            "tap,id=net0,ifname=%s,script=no,downscript=no" % net["tap"],
+            "-device",
+            "virtio-net-pci,netdev=net0,mac=%s" % net["guest_mac"],
+        ]
+        start = now_ms()
+        with serial_log.open("wb") as serial:
+            process = subprocess.Popen(args, stdout=serial, stderr=subprocess.STDOUT)
+        deadline = time.time() + timeout_seconds
+        logs = ""
+        while time.time() < deadline and process.poll() is None:
+            if serial_log.exists():
+                logs = serial_log.read_text(errors="replace")
+            remember_markers(
+                first_seen,
+                logs,
+                start,
+                [
+                    "orca-init: build_time_utc",
+                    "orca-init: child reaper ready",
+                    "orca-init: tty ready",
+                    "Dock HTTP Api listening",
+                    "Workspace Server listening",
+                    "Version: 261.643",
+                    "Smart Mode: enabled",
+                    "Published to JetBrains Relay: true",
+                    JOIN_MARKER,
+                ],
+            )
+            if JOIN_MARKER in logs:
+                return {
+                    "kind": "qemu-q35-local",
+                    "elapsed_ms": now_ms() - start,
+                    "first_seen_ms": first_seen,
+                    "work_dir": str(run_dir),
+                    "serial_log": str(serial_log),
+                    "tini_warning": "Tini is not running as PID 1" in logs,
+                }
+            time.sleep(1)
+        if serial_log.exists():
+            logs = serial_log.read_text(errors="replace")
+        return {
+            "kind": "qemu-q35-local",
+            "error": "timeout" if process.poll() is None else "qemu exited",
             "elapsed_ms": now_ms() - start,
             "first_seen_ms": first_seen,
             "work_dir": str(run_dir),
@@ -476,14 +597,16 @@ def usage():
         "  docker             measure docker run on the Linux VM host\n"
         "  firecracker-local  measure Firecracker with a local ext4 rootfs file, no NBD\n"
         "  firecracker        alias for firecracker-local\n"
+        "  qemu-q35-local     measure QEMU q35 with a local ext4 rootfs file, no NBD\n"
         "  orca               measure Orca Firecracker session through NBD/storage\n"
-        "  all                run docker, firecracker-local, then orca\n"
+        "  all                run docker, firecracker-local, qemu-q35-local, then orca\n"
         "\n"
         "default: all 240\n"
         "\n"
         "examples:\n"
         "  scripts/measure-jetbrains-workspace-timings.py docker 120\n"
         "  scripts/measure-jetbrains-workspace-timings.py firecracker-local 180\n"
+        "  scripts/measure-jetbrains-workspace-timings.py qemu-q35-local 180\n"
         "  scripts/measure-jetbrains-workspace-timings.py orca 260\n"
     )
 
@@ -491,7 +614,7 @@ def usage():
 def parse_args(argv):
     mode = "all"
     timeout_seconds = 240
-    modes = {"docker", "firecracker-local", "firecracker", "orca", "all"}
+    modes = {"docker", "firecracker-local", "firecracker", "qemu-q35-local", "qemu", "orca", "all"}
     args = list(argv)
     if args and args[0] in {"-h", "--help", "help"}:
         usage()
@@ -518,6 +641,8 @@ def parse_args(argv):
         raise SystemExit(2)
     if mode == "firecracker":
         mode = "firecracker-local"
+    if mode == "qemu":
+        mode = "qemu-q35-local"
     return mode, timeout_seconds
 
 
@@ -534,6 +659,11 @@ def main():
         firecracker_local = measure_firecracker_local(timeout_seconds)
         results.append(firecracker_local)
         print_result(firecracker_local)
+    if mode in {"qemu-q35-local", "all"}:
+        print("\nmeasuring local QEMU q35 until %r" % JOIN_MARKER, flush=True)
+        qemu_q35 = measure_qemu_q35_local(timeout_seconds)
+        results.append(qemu_q35)
+        print_result(qemu_q35)
     if mode in {"orca", "all"}:
         print("\nmeasuring orca until %r" % JOIN_MARKER, flush=True)
         orca = measure_orca(timeout_seconds)

@@ -1,0 +1,33 @@
+{
+   "schemaVersion": 2,
+   "config": {
+      "mediaType": "application/vnd.oci.image.config.v1+json",
+      "digest": "sha256:93f5ac78786ad906f4801af45d05b188a3a53a2cc568186a5be73c57ce65e300",
+      "size": 1500
+   },
+   "layers": [
+      {
+         "mediaType": "application/vnd.oci.image.layer.v1.tar",
+         "digest": "sha256:2e23a06997ddacf8692363d37927db9387a9185473e6d76c7f2366dce755a3d5",
+         "size": 5857792,
+         "annotations": {
+            "containerd.io/snapshot/overlaybd/blob-digest": "sha256:2e23a06997ddacf8692363d37927db9387a9185473e6d76c7f2366dce755a3d5",
+            "containerd.io/snapshot/overlaybd/blob-fs-type": "ext4",
+            "containerd.io/snapshot/overlaybd/blob-size": "5857792",
+            "containerd.io/snapshot/overlaybd/version": "0.1.0"
+         }
+      },
+      {
+         "mediaType": "application/vnd.oci.image.layer.v1.tar",
+         "digest": "sha256:69da32bd868b2acdbe77898e4756c11a2c47f86160391aded4124bb8348439d4",
+         "size": 7680,
+         "annotations": {
+            "containerd.io/snapshot/overlaybd/blob-digest": "sha256:69da32bd868b2acdbe77898e4756c11a2c47f86160391aded4124bb8348439d4",
+            "containerd.io/snapshot/overlaybd/blob-fs-type": "ext4",
+            "containerd.io/snapshot/overlaybd/blob-size": "7680",
+            "containerd.io/snapshot/overlaybd/version": "0.1.0"
+         }
+      }
+   ],
+   "mediaType": "application/vnd.docker.distribution.manifest.v2+json"
+}

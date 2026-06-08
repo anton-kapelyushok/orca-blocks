@@ -1,0 +1,607 @@
+RESULT=/root/overlaybd-jb-native-mutator-20260608T185415Z.txt
+BASE_IMG=178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+MUTATOR_IMG=178.128.247.74:5000/orca/overlaybd-jb-real:native-mutator-poupa-20260608T185415Z
+DERIVED_IMG=178.128.247.74:5000/orca/overlaybd-jb-real:native-poupa-obd-20260608T185415Z
+VERIFY_IMG=178.128.247.74:5000/orca/overlaybd-jb-real:verify-native-poupa-obd-20260608T185415Z
+WORK=/root/overlaybd-jb-native-mutator-work-20260608T185415Z
+preflight
+TASK    PID    STATUS    
+CONTAINER    IMAGE    RUNTIME    
+2026-06-08T18:54:15Z step=restart_overlaybd start
+2026-06-08T18:54:15Z step=restart_overlaybd ok duration_ms=22
+active
+active
+active
+fetch_base
+push_mutator_config_and_manifest
+2026-06-08T18:54:16Z step=upload_mutator_config start
+upload sha256:541695cff9438aefd35c1d548eac8e7f47e3dd9676223bfcd8288b890847bae0 size=22179
+2026-06-08T18:54:17Z step=upload_mutator_config ok duration_ms=131
+2026-06-08T18:54:17Z step=push_mutator_manifest start
+2026-06-08T18:54:17Z step=push_mutator_manifest ok duration_ms=75
+MUTATOR_PUSHED=178.128.247.74:5000/orca/overlaybd-jb-real:native-mutator-poupa-20260608T185415Z
+2026-06-08T18:54:17Z step=rpull_mutator start
+178.128.247.74:5000/orca/overlaybd-jb-real:native-mutator-poupa-20260608T185415Z: resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:c76d12c975c12c166dbe40752e396e546e3a286e9d7cf64c8f7398d6bfd4d381: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:541695cff9438aefd35c1d548eac8e7f47e3dd9676223bfcd8288b890847bae0:   waiting        |[32m[0m--------------------------------------| 
+elapsed: 0.1 s                                                                    total:  12.1 K (118.6 KiB/s)                                     
+done
+2026-06-08T18:54:17Z step=rpull_mutator ok duration_ms=246
+2026-06-08T18:54:17Z step=run_mutator start
+2026-06-08T18:54:17Z step=run_mutator ok duration_ms=439
+2026-06-08T18:54:19Z step=verify_mutation start
+-rw-r--r-- 1 root root 0 Jun  8 18:54 /poupa
+2026-06-08T18:54:19Z step=verify_mutation ok duration_ms=175
+stop_keep_snapshot
+time="2026-06-08T18:54:21Z" level=warning msg="task jb-mutator-20260608T185415Z exit with non-zero exit code 137"
+{
+    "ID": "jb-mutator-20260608T185415Z",
+    "Labels": {
+        "io.containerd.image.config.stop-signal": "SIGTERM",
+        "org.opencontainers.image.version": "24.04"
+    },
+    "Image": "178.128.247.74:5000/orca/overlaybd-jb-real:native-mutator-poupa-20260608T185415Z",
+    "Runtime": {
+        "Name": "io.containerd.runc.v2",
+        "Options": {
+            "type_url": "containerd.runc.v1.Options"
+        }
+    },
+    "SnapshotKey": "jb-mutator-20260608T185415Z",
+    "Snapshotter": "overlaybd",
+    "CreatedAt": "2026-06-08T18:54:17.68940325Z",
+    "UpdatedAt": "2026-06-08T18:54:17.68940325Z",
+    "Extensions": {},
+    "SandboxID": "",
+    "Spec": {
+        "ociVersion": "1.2.0",
+        "process": {
+            "user": {
+                "uid": 0,
+                "gid": 0,
+                "additionalGids": [
+                    0
+                ]
+            },
+            "args": [
+                "sh",
+                "-lc",
+                "touch /poupa; echo touched; sleep 600"
+            ],
+            "env": [
+                "PATH=/home/workspace-agent/.embark/bin:/opt/maven/apache-maven-3.9.13/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/nvm/versions/node/v25.2.1/bin:/usr/local/go/bin:/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr/bin",
+                "NVM_DIR=/usr/local/nvm",
+                "MAVEN_HOME=/opt/maven/apache-maven-3.9.13",
+                "HOME=/home/workspace-agent",
+                "JBR_VERSION_ENV=25.0.2-329.111",
+                "FLEET_VERSION_ENV=261.643",
+                "SH_SCRIPT_FOLDER_ENV=/usr/local/bin",
+                "LANG=C.UTF-8",
+                "LC_ALL=C.UTF-8",
+                "LAUNCHER_VERSION=261.643",
+                "LAUNCHER_LOCATION=/usr/local/bin/fleet-launcher",
+                "LAUNCHER_BASE_COMMAND=/usr/local/bin/fleet-launcher --debug launch workspace --workspace-version 261.643",
+                "JAVA_HOME=/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr"
+            ],
+            "cwd": "/",
+            "capabilities": {
+                "bounding": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ],
+                "effective": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ],
+                "permitted": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ]
+            },
+            "rlimits": [
+                {
+                    "type": "RLIMIT_NOFILE",
+                    "hard": 1024,
+                    "soft": 1024
+                }
+            ],
+            "noNewPrivileges": true
+        },
+        "root": {
+            "path": "rootfs"
+        },
+        "mounts": [
+            {
+                "destination": "/proc",
+                "type": "proc",
+                "source": "proc",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/dev",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/pts",
+                "type": "devpts",
+                "source": "devpts",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "newinstance",
+                    "ptmxmode=0666",
+                    "mode=0620",
+                    "gid=5"
+                ]
+            },
+            {
+                "destination": "/dev/shm",
+                "type": "tmpfs",
+                "source": "shm",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "mode=1777",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/mqueue",
+                "type": "mqueue",
+                "source": "mqueue",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/sys",
+                "type": "sysfs",
+                "source": "sysfs",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "ro"
+                ]
+            },
+            {
+                "destination": "/run",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            }
+        ],
+        "linux": {
+            "resources": {
+                "devices": [
+                    {
+                        "allow": false,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 3,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 8,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 7,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 0,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 5,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 9,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 1,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 136,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 2,
+                        "access": "rwm"
+                    }
+                ],
+                "cpu": {
+                    "shares": 1024
+                }
+            },
+            "cgroupsPath": "/moby/jb-mutator-20260608T185415Z",
+            "namespaces": [
+                {
+                    "type": "pid"
+                },
+                {
+                    "type": "ipc"
+                },
+                {
+                    "type": "uts"
+                },
+                {
+                    "type": "mount"
+                },
+                {
+                    "type": "network"
+                }
+            ],
+            "maskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap",
+                "/proc/scsi"
+            ],
+            "readonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        }
+    }
+}
+SNAPKEY=jb-mutator-20260608T185415Z
+{
+    "Kind": "Active",
+    "Name": "jb-mutator-20260608T185415Z",
+    "Parent": "sha256:5d4d468c8300302c8ac0f34be91f906b8f0be82a9d0ae57194864b1aaf3897f2",
+    "Created": "2026-06-08T18:54:17.65047963Z",
+    "Updated": "2026-06-08T18:54:17.65047963Z"
+}
+1780944861.0303533880 /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152/block/writable_data
+WD=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152/block/writable_data
+WI=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152/block/writable_index
+SNAPDIR=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152
+-rw-r--r-- 1 root root 116K Jun  8 18:54 /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152/block/writable_data
+-rw-r--r-- 1 root root 4.3K Jun  8 18:54 /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/152/block/writable_index
+2026-06-08T18:54:21Z step=overlaybd_commit start
+2026/06/08 18:54:21.139303|INFO |th=0000609726ECCB50|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/08 18:54:21.139370|INFO |th=0000609726ECCB50|signal.cpp:265|sync_signal_init:signalfd initialized
+2026/06/08 18:54:21.139456|INFO |th=0000609726ECCB50|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/08 18:54:21.146245|DEBUG|th=0000609726ECCB50|curl.cpp:228|libcurl_init:libcurl version libcurl/7.81.0 OpenSSL/3.0.2 zlib/1.2.11 brotli/1.0.9 zstd/1.4.8 libidn2/2.3.2 libpsl/0.21.0 (+libidn2/2.3.2) libssh/0.9.6/openssl/zlib nghttp2/1.43.0 librtmp/2.3 OpenLDAP/2.5.20
+2026/06/08 18:54:21.146557|INFO |th=0000609726ECCB50|file.cpp:1504|open_file_rw:create LSMTFile object (append-only)
+2026/06/08 18:54:21.146568|INFO |th=0000609726ECCB50|file.cpp:1518|open_file_rw:Layer Info: { UUID:33B14524-3BBE-4D71-B23D-B87A6BFD1598 , Parent_UUID: 00000000-0000-0000-0000-000000000000, SparseRW: 0, Virtual size: 68719476736, Version: 1.1 }
+2026/06/08 18:54:21.146641|INFO |th=0000609726ECCB50|zfile.cpp:581|ZFileBuilder:create stream compressing object. [ block size: 4096, type: 1, enable_checksum: 1]
+2026/06/08 18:54:21.146657|INFO |th=0000609726ECCB50|compressor.cpp:352|create_compressor:ZFileObject using LZ4 algorithm
+2026/06/08 18:54:21.146660|DEBUG|th=0000609726ECCB50|compressor.cpp:58|init:create batch buffer, size: 1
+2026/06/08 18:54:21.146664|INFO |th=0000609726ECCB50|zfile.cpp:592|init:write header.
+2026/06/08 18:54:21.146667|INFO |th=0000609726ECCB50|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: C7A212FC
+2026/06/08 18:54:21.146701|INFO |th=0000609726ECCB50|index.cpp:575|dump:index dump, size: 17 ( mapping.size: 17 )
+2026/06/08 18:54:21.146711|INFO |th=0000609726ECCB50|file.cpp:250|CompactOptions:generate compact options, file count: 1
+2026/06/08 18:54:21.146764|DEBUG|th=0000609726ECCB50|file.cpp:363|load_layer_info:00000000-0000-0000-0000-000000000000
+2026/06/08 18:54:21.146769|INFO |th=0000609726ECCB50|file.cpp:365|load_layer_info:get parent UUID: 00000000-0000-0000-0000-000000000000
+2026/06/08 18:54:21.146772|INFO |th=0000609726ECCB50|file.cpp:219|write_header_trailer:write header {virtual_size: 68719476736, uuid: 00000000-0000-0000-0000-000000000000, parent_uuid: 00000000-0000-0000-0000-000000000000}
+2026/06/08 18:54:21.146774|WARN |th=0000609726ECCB50|file.cpp:229|write_header_trailer:parent_uuid is null.
+2026/06/08 18:54:21.146777|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.146790|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3832974953
+2026/06/08 18:54:21.146794|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 94 bytes.
+2026/06/08 18:54:21.146798|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.146836|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 0, len: 8, moffset: 224]
+2026/06/08 18:54:21.146844|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 114688, step: 4096
+2026/06/08 18:54:21.146848|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[0,8]--> Mapping[8,0,0] [data_length=4096]
+2026/06/08 18:54:21.146851|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.146856|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.146869|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1889238159
+2026/06/08 18:54:21.146870|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 225 bytes.
+2026/06/08 18:54:21.146874|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.146876|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 8, len: 8, moffset: 24]
+2026/06/08 18:54:21.146877|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 12288, step: 4096
+2026/06/08 18:54:21.146880|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[8,8]--> Mapping[16,0,0] [data_length=4096]
+2026/06/08 18:54:21.146882|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.146883|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.146892|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1488703538
+2026/06/08 18:54:21.146893|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 1600 bytes.
+2026/06/08 18:54:21.146896|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.146897|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 8272, len: 16, moffset: 32]
+2026/06/08 18:54:21.146898|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 16384, step: 8192
+2026/06/08 18:54:21.146903|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[8272,16]--> Mapping[24,0,0] [data_length=8192]
+2026/06/08 18:54:21.146912|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 8192)
+2026/06/08 18:54:21.146914|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 8192)
+2026/06/08 18:54:21.146916|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3695724113
+2026/06/08 18:54:21.146918|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 36 bytes.
+2026/06/08 18:54:21.146925|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3326182253
+2026/06/08 18:54:21.146955|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 601 bytes.
+2026/06/08 18:54:21.146962|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 8192 bytes done. reserved: 0
+2026/06/08 18:54:21.146964|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 12376, len: 8, moffset: 48]
+2026/06/08 18:54:21.146966|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 24576, step: 4096
+2026/06/08 18:54:21.146969|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[12376,8]--> Mapping[40,0,0] [data_length=4096]
+2026/06/08 18:54:21.146970|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.146972|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.146976|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2823412785
+2026/06/08 18:54:21.146977|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 290 bytes.
+2026/06/08 18:54:21.146980|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.146981|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 38797328, len: 8, moffset: 56]
+2026/06/08 18:54:21.146983|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 28672, step: 4096
+2026/06/08 18:54:21.146986|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[38797328,8]--> Mapping[48,0,0] [data_length=4096]
+2026/06/08 18:54:21.146988|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.146989|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.146995|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1459548740
+2026/06/08 18:54:21.146997|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 821 bytes.
+2026/06/08 18:54:21.147008|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147010|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 52953360, len: 8, moffset: 64]
+2026/06/08 18:54:21.147011|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 32768, step: 4096
+2026/06/08 18:54:21.147014|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[52953360,8]--> Mapping[56,0,0] [data_length=4096]
+2026/06/08 18:54:21.147016|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147017|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147024|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 224443488
+2026/06/08 18:54:21.147025|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 876 bytes.
+2026/06/08 18:54:21.147028|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147029|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 67633192, len: 32, moffset: 72]
+2026/06/08 18:54:21.147030|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 36864, step: 16384
+2026/06/08 18:54:21.147037|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[67633192,32]--> Mapping[64,0,0] [data_length=16384]
+2026/06/08 18:54:21.147043|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 16384)
+2026/06/08 18:54:21.147045|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 16384)
+2026/06/08 18:54:21.147051|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 770616622
+2026/06/08 18:54:21.147052|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 845 bytes.
+2026/06/08 18:54:21.147060|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2882295866
+2026/06/08 18:54:21.147065|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 867 bytes.
+2026/06/08 18:54:21.147073|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3821362553
+2026/06/08 18:54:21.147074|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 846 bytes.
+2026/06/08 18:54:21.147081|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2760913755
+2026/06/08 18:54:21.147084|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 848 bytes.
+2026/06/08 18:54:21.147093|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 16384 bytes done. reserved: 0
+2026/06/08 18:54:21.147094|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 67633264, len: 8, moffset: 104]
+2026/06/08 18:54:21.147096|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 53248, step: 4096
+2026/06/08 18:54:21.147099|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[67633264,8]--> Mapping[96,0,0] [data_length=4096]
+2026/06/08 18:54:21.147100|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147101|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147108|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3904779268
+2026/06/08 18:54:21.147109|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 951 bytes.
+2026/06/08 18:54:21.147112|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147114|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973216, len: 8, moffset: 112]
+2026/06/08 18:54:21.147115|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 57344, step: 4096
+2026/06/08 18:54:21.147118|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973216,8]--> Mapping[104,0,0] [data_length=4096]
+2026/06/08 18:54:21.147120|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147121|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147127|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2614886445
+2026/06/08 18:54:21.147128|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 912 bytes.
+2026/06/08 18:54:21.147131|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147133|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973248, len: 24, moffset: 120]
+2026/06/08 18:54:21.147134|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 61440, step: 12288
+2026/06/08 18:54:21.147139|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973248,24]--> Mapping[112,0,0] [data_length=12288]
+2026/06/08 18:54:21.147141|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 12288)
+2026/06/08 18:54:21.147142|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 12288)
+2026/06/08 18:54:21.147148|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1945050460
+2026/06/08 18:54:21.147154|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 921 bytes.
+2026/06/08 18:54:21.147162|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 796592514
+2026/06/08 18:54:21.147163|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 900 bytes.
+2026/06/08 18:54:21.147170|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1200667014
+2026/06/08 18:54:21.147176|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 939 bytes.
+2026/06/08 18:54:21.147184|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 12288 bytes done. reserved: 0
+2026/06/08 18:54:21.147189|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973304, len: 24, moffset: 144]
+2026/06/08 18:54:21.147190|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 73728, step: 12288
+2026/06/08 18:54:21.147195|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973304,24]--> Mapping[136,0,0] [data_length=12288]
+2026/06/08 18:54:21.147197|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 12288)
+2026/06/08 18:54:21.147198|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 12288)
+2026/06/08 18:54:21.147203|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1048067971
+2026/06/08 18:54:21.147205|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 777 bytes.
+2026/06/08 18:54:21.147212|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 230794799
+2026/06/08 18:54:21.147213|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 948 bytes.
+2026/06/08 18:54:21.147220|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1949257504
+2026/06/08 18:54:21.147227|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 857 bytes.
+2026/06/08 18:54:21.147231|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 12288 bytes done. reserved: 0
+2026/06/08 18:54:21.147232|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973368, len: 8, moffset: 168]
+2026/06/08 18:54:21.147233|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 86016, step: 4096
+2026/06/08 18:54:21.147236|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973368,8]--> Mapping[160,0,0] [data_length=4096]
+2026/06/08 18:54:21.147238|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147239|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147245|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1866758023
+2026/06/08 18:54:21.147246|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 754 bytes.
+2026/06/08 18:54:21.147253|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147257|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973520, len: 8, moffset: 176]
+2026/06/08 18:54:21.147258|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 90112, step: 4096
+2026/06/08 18:54:21.147261|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973520,8]--> Mapping[168,0,0] [data_length=4096]
+2026/06/08 18:54:21.147263|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147264|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147270|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 83693918
+2026/06/08 18:54:21.147271|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 899 bytes.
+2026/06/08 18:54:21.147274|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147275|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973536, len: 8, moffset: 184]
+2026/06/08 18:54:21.147277|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 94208, step: 4096
+2026/06/08 18:54:21.147280|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973536,8]--> Mapping[176,0,0] [data_length=4096]
+2026/06/08 18:54:21.147282|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147283|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147290|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 700823527
+2026/06/08 18:54:21.147291|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 1079 bytes.
+2026/06/08 18:54:21.147294|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147295|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973568, len: 16, moffset: 192]
+2026/06/08 18:54:21.147296|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 98304, step: 8192
+2026/06/08 18:54:21.147300|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973568,16]--> Mapping[184,0,0] [data_length=8192]
+2026/06/08 18:54:21.147301|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 8192)
+2026/06/08 18:54:21.147303|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 8192)
+2026/06/08 18:54:21.147309|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1207386384
+2026/06/08 18:54:21.147316|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 1030 bytes.
+2026/06/08 18:54:21.147324|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 1198925009
+2026/06/08 18:54:21.147326|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 1085 bytes.
+2026/06/08 18:54:21.147334|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 8192 bytes done. reserved: 0
+2026/06/08 18:54:21.147337|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 74973976, len: 8, moffset: 208]
+2026/06/08 18:54:21.147338|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 106496, step: 4096
+2026/06/08 18:54:21.147342|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[74973976,8]--> Mapping[200,0,0] [data_length=4096]
+2026/06/08 18:54:21.147343|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147344|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147350|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3282581261
+2026/06/08 18:54:21.147352|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 884 bytes.
+2026/06/08 18:54:21.147354|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147356|DEBUG|th=0000609726ECCB50|file.cpp:297|pcopy:check segment: [ offset: 76022688, len: 8, moffset: 216]
+2026/06/08 18:54:21.147357|DEBUG|th=0000609726ECCB50|file.cpp:301|pcopy:read from src_file, offset: 110592, step: 4096
+2026/06/08 18:54:21.147360|DEBUG|th=0000609726ECCB50|file.cpp:264|push_segment:push Segment[76022688,8]--> Mapping[208,0,0] [data_length=4096]
+2026/06/08 18:54:21.147362|DEBUG|th=0000609726ECCB50|file.cpp:327|pcopy:write valid data(size: 4096)
+2026/06/08 18:54:21.147364|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147368|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2402250058
+2026/06/08 18:54:21.147370|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 574 bytes.
+2026/06/08 18:54:21.147372|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147374|INFO |th=0000609726ECCB50|index.cpp:920|compress_raw_index:index size compressed from 17 to 16
+2026/06/08 18:54:21.147376|DEBUG|th=0000609726ECCB50|file.cpp:420|compact:write index to dest_file 0000609726EEA870, size: 16*16
+2026/06/08 18:54:21.147379|DEBUG|th=0000609726ECCB50|file.cpp:431|compact:index_count: 256, (include padding: 240), 16
+2026/06/08 18:54:21.147381|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147385|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 3177745150
+2026/06/08 18:54:21.147389|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 242 bytes.
+2026/06/08 18:54:21.147392|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147394|DEBUG|th=0000609726ECCB50|file.cpp:448|compact:trailer offset: -1
+2026/06/08 18:54:21.147396|INFO |th=0000609726ECCB50|file.cpp:222|write_header_trailer:write trailer {index_offset: 110592, index_size: 256, virtual_size: 68719476736, uuid: 00000000-0000-0000-0000-000000000000, parent_uuid: 00000000-0000-0000-0000-000000000000, sealed: 1}
+2026/06/08 18:54:21.147397|WARN |th=0000609726ECCB50|file.cpp:229|write_header_trailer:parent_uuid is null.
+2026/06/08 18:54:21.147398|DEBUG|th=0000609726ECCB50|zfile.cpp:665|write:generate zfile data(raw_data size: 4096)
+2026/06/08 18:54:21.147401|DEBUG|th=0000609726ECCB50|zfile.cpp:563|compress_data:append 4 bytes crc32_code: 2048015701
+2026/06/08 18:54:21.147403|DEBUG|th=0000609726ECCB50|zfile.cpp:566|compress_data:compressed 4096 bytes into 104 bytes.
+2026/06/08 18:54:21.147405|DEBUG|th=0000609726ECCB50|zfile.cpp:695|write:compressed 4096 bytes done. reserved: 0
+2026/06/08 18:54:21.147407|INFO |th=0000609726ECCB50|zfile.cpp:629|fini:write index (offset: 22317, count: 29 size: 116)
+2026/06/08 18:54:21.147411|INFO |th=0000609726ECCB50|zfile.cpp:639|fini:write trailer.
+2026/06/08 18:54:21.147412|INFO |th=0000609726ECCB50|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: 09CE8599
+2026/06/08 18:54:21.147415|INFO |th=0000609726ECCB50|zfile.cpp:644|fini:overwrite file header.
+2026/06/08 18:54:21.147417|INFO |th=0000609726ECCB50|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: F90E50BD
+
+2026/06/08 18:54:21.147427|DEBUG|th=0000609726ECCB50|file.cpp:742|~LSMTFile: ~LSMTFile()
+2026/06/08 18:54:21.147429|DEBUG|th=0000609726ECCB50|file.cpp:780|close:ownership:1, m_findex:0000609726EEA150
+2026/06/08 18:54:21.147436|INFO |th=0000609726ECCB50|file.cpp:469|~LSMTReadOnlyFile:pread times: 0, size: 0M
+2026/06/08 18:54:21.147438|DEBUG|th=0000609726ECCB50|file.cpp:472|~LSMTReadOnlyFile:m_file_ownership:1, m_files.size:1
+2026/06/08 18:54:21.169053|INFO |th=0000609726ECCB50|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+2026/06/08 18:54:21.169141|DEBUG|th=00007FD92044B740|signal.cpp:139|wait_for_signal:wait for signalfd failed because errno=4(Interrupted system call), stop watching
+2026/06/08 18:54:21.169176|INFO |th=0000609726ECCB50|signal.cpp:301|sync_signal_fini:signalfd finished
+2026/06/08 18:54:21.169184|INFO |th=0000609726ECCB50|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+overlaybd-commit has committed files SUCCESSFULLY
+2026-06-08T18:54:21Z step=overlaybd_commit ok duration_ms=42
+total 52K
+-rw-r--r-- 1 root root 9.6K Jun  8 18:54 container-info.json
+-rw-r--r-- 1 root root  23K Jun  8 18:54 poupa-commit.obd
+-rw-r--r-- 1 root root  253 Jun  8 18:54 snapshot-info.json
+-rw------- 1 root root 5.3K Jun  8 18:54 source-config.v1.json
+-rw-r--r-- 1 root root  115 Jun  8 18:54 writable-files.txt
+72e018a3c302e5c3abdf5611b159f6276305e1990b8568e1916adf598849887c  /root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit/container-info.json
+c48423d6893bd85f70213c314e534f017a121353ce107b84981277e7fc045942  /root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit/poupa-commit.obd
+45d56bf32febaf73d6e4560b3269fc31971164693a5ad572f29182f4ae2e76f5  /root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit/snapshot-info.json
+77a653c003455b32dd130a3a4a7976f9468ea98f3f81933e06f8e7c609671166  /root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit/source-config.v1.json
+00819417db1e3b9a4bb6117d7b5724bbd3651297f1065b123a0692dc070b0c6b  /root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit/writable-files.txt
+LAYER_DIGEST=sha256:c48423d6893bd85f70213c314e534f017a121353ce107b84981277e7fc045942
+LAYER_SIZE=22945
+push_final_and_verify
+2026-06-08T18:54:21Z step=upload_layer start
+upload sha256:c48423d6893bd85f70213c314e534f017a121353ce107b84981277e7fc045942 size=22945
+2026-06-08T18:54:21Z step=upload_layer ok duration_ms=105
+2026-06-08T18:54:21Z step=upload_derived_config start
+upload sha256:2d9de3d251aeb99fc5db8fb761ff5158993e2f19c23955dbd4402f8a04ae8e10 size=22438
+2026-06-08T18:54:21Z step=upload_derived_config ok duration_ms=117
+2026-06-08T18:54:21Z step=upload_verify_config start
+upload sha256:aa2591e146bf0d67053d3d17b6325c3829f234eaa46ab5549fb7106cadc0131e size=22379
+2026-06-08T18:54:21Z step=upload_verify_config ok duration_ms=127
+2026-06-08T18:54:21Z step=push_derived_manifest start
+2026-06-08T18:54:21Z step=push_derived_manifest ok duration_ms=52
+2026-06-08T18:54:21Z step=push_verify_manifest start
+2026-06-08T18:54:21Z step=push_verify_manifest ok duration_ms=65
+DERIVED_PUSHED=178.128.247.74:5000/orca/overlaybd-jb-real:native-poupa-obd-20260608T185415Z
+VERIFY_PUSHED=178.128.247.74:5000/orca/overlaybd-jb-real:verify-native-poupa-obd-20260608T185415Z
+{"name":"orca/overlaybd-jb-real","tags":["native-poupa-obd-20260608T185415Z","obd-jb-real-sysbox-20260608T171059Z","native-mutator-poupa-20260608T185415Z","verify-native-poupa-obd-20260608T185415Z","normal-jb-real-sysbox-20260608T171059Z"]}
+
+2026-06-08T18:54:21Z step=rpull_verify start
+178.128.247.74:5000/orca/overlaybd-jb-real:verify-native-poupa-obd-20260608T185415Z: resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:1beef6a7ea8044f7e967876c8e321d20cad74485ce53ad43911a680577a22b47:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:aa2591e146bf0d67053d3d17b6325c3829f234eaa46ab5549fb7106cadc0131e:      waiting        |[32m[0m--------------------------------------| 
+elapsed: 0.1 s                                                                       total:  12.6 K (123.1 KiB/s)                                     
+done
+2026-06-08T18:54:22Z step=rpull_verify ok duration_ms=229
+2026-06-08T18:54:22Z step=run_verify start
+VERIFY
+-rw-r--r-- 1 root root 0 Jun  8 18:54 /poupa
+JB_HOME_OK
+2026-06-08T18:54:22Z step=run_verify ok duration_ms=449
+done RESULT=/root/overlaybd-jb-native-mutator-20260608T185415Z.txt WORK=/root/overlaybd-jb-native-mutator-work-20260608T185415Z COMMIT_DIR=/root/overlaybd-jb-native-mutator-work-20260608T185415Z/commit

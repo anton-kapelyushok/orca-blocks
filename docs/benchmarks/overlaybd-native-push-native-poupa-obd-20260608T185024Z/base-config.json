@@ -1,0 +1,48 @@
+{
+   "created": "2026-06-08T16:51:59.372784218Z",
+   "architecture": "amd64",
+   "os": "linux",
+   "config": {
+      "Env": [
+         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "Cmd": [
+         "sh",
+         "-lc",
+         "echo BASE_FIRST_OUTPUT \u0026\u0026 cat /base-layer.txt"
+      ],
+      "WorkingDir": "/",
+      "ArgsEscaped": true
+   },
+   "rootfs": {
+      "type": "layers",
+      "diff_ids": [
+         "sha256:2e23a06997ddacf8692363d37927db9387a9185473e6d76c7f2366dce755a3d5",
+         "sha256:69da32bd868b2acdbe77898e4756c11a2c47f86160391aded4124bb8348439d4"
+      ]
+   },
+   "history": [
+      {
+         "created": "2026-04-16T23:53:02.396814646Z",
+         "created_by": "ADD alpine-minirootfs-3.22.4-x86_64.tar.gz / # buildkit",
+         "comment": "buildkit.dockerfile.v0"
+      },
+      {
+         "created": "2026-04-16T23:53:02.396814646Z",
+         "created_by": "CMD [\"/bin/sh\"]",
+         "comment": "buildkit.dockerfile.v0",
+         "empty_layer": true
+      },
+      {
+         "created": "2026-06-08T16:51:59.372784218Z",
+         "created_by": "RUN /bin/sh -c echo base-layer \u003e /base-layer.txt # buildkit",
+         "comment": "buildkit.dockerfile.v0"
+      },
+      {
+         "created": "2026-06-08T16:51:59.372784218Z",
+         "created_by": "CMD [\"sh\" \"-lc\" \"echo BASE_FIRST_OUTPUT \u0026\u0026 cat /base-layer.txt\"]",
+         "comment": "buildkit.dockerfile.v0",
+         "empty_layer": true
+      }
+   ]
+}

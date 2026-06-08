@@ -1,0 +1,177 @@
+[2m2026-06-08T18:38:09.473898Z[0m [32m INFO[0m [2mfleet::artefact[0m[2m:[0m dock metadata file exists, inferring JBR version from it
+[2m2026-06-08T18:38:09.517548Z[0m [34mDEBUG[0m [2mfleet::workspace[0m[2m:[0m Starting Fleet Workspace with command: cd "/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/dock" && "/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr/bin/java" "-Dfleet.fsdaemon=/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/fsdaemon/fsdaemon.sig" "@argfile.txt" "--workspaceOnly" "--auth=accept-everyone" "--publish" "--enableSmartMode"
+sudo: unable to resolve host node1: Temporary failure in name resolution
+time="2026-06-08T18:38:15.164693545Z" level=info msg="Starting up"
+time="2026-06-08T18:38:15.212462591Z" level=info msg="containerd not running, starting managed containerd"
+time="2026-06-08T18:38:15.250765169Z" level=info msg="started new containerd process" address=/var/run/docker/containerd/containerd.sock module=libcontainerd pid=115
+Configure file log with class fleet.dock.impl.FleetDockLogbackConfigurator (/home/workspace-agent/.cache/JetBrains/Air/log/air.log)
+Loaded default logback configuration
+Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/Air/log.conf.toml'
+Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
+Dock HTTP Api listening to 127.0.0.1:36791
+time="2026-06-08T18:38:18.318839969Z" level=info msg="starting containerd" revision= version=2.2.1
+time="2026-06-08T18:38:18.356323888Z" level=warning msg="Configuration migrated from version 2, use `containerd config migrate` to avoid migration" t="46.13µs"
+time="2026-06-08T18:38:18.356370578Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+time="2026-06-08T18:38:18.356438208Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+time="2026-06-08T18:38:18.356455538Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+time="2026-06-08T18:38:18.360809157Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+time="2026-06-08T18:38:18.361267337Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+time="2026-06-08T18:38:18.361567167Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.361985376Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.362271456Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.363023576Z" level=info msg="skip loading plugin" error="path /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.btrfs (ext4) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.363280126Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.363630496Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.363817186Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.364523976Z" level=info msg="skip loading plugin" error="EROFS unsupported, please `modprobe erofs`: skip plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.365034546Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.365413286Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.365907456Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.366254205Z" level=info msg="skip loading plugin" error="lstat /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-08T18:38:18.366473305Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+time="2026-06-08T18:38:18.367202935Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+time="2026-06-08T18:38:18.371403244Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+time="2026-06-08T18:38:18.371880694Z" level=info msg="metadata content store policy set" policy=shared
+time="2026-06-08T18:38:18.387551129Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+time="2026-06-08T18:38:18.387916819Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+time="2026-06-08T18:38:18.387988649Z" level=info msg="built-in NRI default validator is disabled"
+time="2026-06-08T18:38:18.388000029Z" level=info msg="runtime interface created"
+time="2026-06-08T18:38:18.388006949Z" level=info msg="created NRI interface"
+time="2026-06-08T18:38:18.388020899Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-08T18:38:18.388179359Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-08T18:38:18.388197299Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+time="2026-06-08T18:38:18.388216289Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+time="2026-06-08T18:38:18.388231819Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+time="2026-06-08T18:38:18.388506988Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388534399Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388549579Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388565279Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388580548Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388594628Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388607779Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388620119Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+time="2026-06-08T18:38:18.388637279Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+time="2026-06-08T18:38:18.388805338Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+time="2026-06-08T18:38:18.388834749Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.388850798Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400061835Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400112835Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400142695Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400161065Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400176885Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400191875Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400205285Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.400233705Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+time="2026-06-08T18:38:18.400249505Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+time="2026-06-08T18:38:18.400289305Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+time="2026-06-08T18:38:18.400344335Z" level=info msg="Get image filesystem path \"/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs\" for snapshotter \"overlayfs\""
+time="2026-06-08T18:38:18.400361935Z" level=info msg="Start snapshots syncer"
+time="2026-06-08T18:38:18.400397915Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+time="2026-06-08T18:38:18.403485404Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"containerdRootDir\":\"/var/lib/docker/containerd/daemon\",\"containerdEndpoint\":\"/var/run/docker/containerd/containerd.sock\",\"rootDir\":\"/var/lib/docker/containerd/daemon/io.containerd.grpc.v1.cri\",\"stateDir\":\"/var/run/docker/containerd/daemon/io.containerd.grpc.v1.cri\"}"
+time="2026-06-08T18:38:18.403582924Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+time="2026-06-08T18:38:18.403640374Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+time="2026-06-08T18:38:18.403822344Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.403851204Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.411824522Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.411868822Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+time="2026-06-08T18:38:18.411893042Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.411910102Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.411926022Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.411997211Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.412027482Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+time="2026-06-08T18:38:18.416118940Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-08T18:38:18.416174680Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-08T18:38:18.416188880Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-08T18:38:18.416202250Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-08T18:38:18.416217760Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+time="2026-06-08T18:38:18.416246520Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+time="2026-06-08T18:38:18.425841098Z" level=info msg=serving... address=/var/run/docker/containerd/containerd-debug.sock
+time="2026-06-08T18:38:18.429015397Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock.ttrpc
+time="2026-06-08T18:38:18.431117846Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock
+time="2026-06-08T18:38:18.433025255Z" level=info msg="containerd successfully booted in 0.117907s"
+time="2026-06-08T18:38:18.472053844Z" level=info msg="OTEL tracing is not configured, using no-op tracer provider"
+time="2026-06-08T18:38:18.472509833Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/var/run/cdi
+time="2026-06-08T18:38:18.472539173Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/etc/cdi
+time="2026-06-08T18:38:19.345576742Z" level=info msg="Creating a containerd client" address=/var/run/docker/containerd/containerd.sock timeout=1m0s
+time="2026-06-08T18:38:19.355440768Z" level=info msg="Loading containers: start."
+time="2026-06-08T18:38:19.355533249Z" level=info msg="Starting daemon with containerd snapshotter integration enabled"
+time="2026-06-08T18:38:19.363283386Z" level=info msg="Restoring containers: start."
+time="2026-06-08T18:38:19.381026141Z" level=info msg="Deleting nftables IPv6 rules" error="exec: \"nft\": executable file not found in $PATH"
+time="2026-06-08T18:38:19.581313691Z" level=info msg="Loading containers: done."
+time="2026-06-08T18:38:19.712771732Z" level=info msg="Docker daemon" commit="29.1.3-0ubuntu3~24.04.2" containerd-snapshotter=true storage-driver=overlayfs version=29.1.3
+time="2026-06-08T18:38:19.713011182Z" level=info msg="Initializing buildkit"
+time="2026-06-08T18:38:20.059656098Z" level=info msg="Completed buildkit initialization"
+time="2026-06-08T18:38:20.069779254Z" level=info msg="Daemon has completed initialization"
+time="2026-06-08T18:38:20.070662394Z" level=info msg="API listen on /var/run/docker.sock"
+[20260608 18:38:24.486 WARN  67:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
+java.nio.channels.UnresolvedAddressException: null
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:152)
+	at java.base/sun.nio.ch.SocketChannelImpl.checkRemote(SocketChannelImpl.java:918)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:936)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.SocketImpl.connect$ktor_network(SocketImpl.kt:44)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.ConnectUtilsJvmKt.tcpConnect(ConnectUtilsJvm.kt:21)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.TcpSocketBuilder.connect(TcpSocketBuilder.kt:48)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.ConnectionFactory.connect(ConnectionFactory.kt:30)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invokeSuspend(Endpoint.kt:215)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndspatched(Undispatched.kt:67)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturnIgnoreTimeout(Undispatched.kt:50)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.setupTimeout(Timeout.kt:149)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.withTimeoutOrNull(Timeout.kt:105)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.connect(Endpoint.kt:223)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.makeDedicatedRequest(Endpoint.kt:102)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.execute(Endpoint.kt:67)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.CIOEngine.execute(CIOEngine.kt:89)
+	at fleet.util.network@261.643/fleet.net.ProxyDelegatingClientEngine.execute(HttpProxyExtensions.kt:149)
+	at io.ktor.client.core@3.4.1/io.ktor.client.engine.HttpClientEngine$executeWithinCallContext$2.invokeSuspend(HttpClientEngine.kt:183)
+	at fleet.kotlin.runtime/kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at fleet.kotlin.runtime/kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at fleet.kotlin.runtime/kotlinx.coroutines.internal.SoftLimitedDispatcher$Worker.run(SoftLimitedDispatcher.kt:130)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:610)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:1188)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
+[20260608 18:38:26.009 WARN  67:WS:2ur0o6gmc9b10f3vpkel fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=39833, secret=SReym8QfSaINS7KhhXNsKJxxqMOon4pSUQK5CU3bxFH5KtaxkkW6wOX_fOxHU7Zrk2ntsKfQf3b-M0Fsc64XGGO9VKqBSP0vQ3ExIMDUaMvw33bRpSDPQalCPuN_X6SjHvI2UIssyS35JwvZb_g_eMqNvJuO0aw-6pVsmcyUDKdrdPARsPKnFKrqh5oIiPuvPUgWRDLhfHpdonslSWgcq4mfxI-CJBw2syuxpX9BmivSVxDvnuZE8CSawZsOlpeUjoYO_utoSuVRKqAUqzLeR2KRnzB8P3reXnufHyFEeWC8fIXgHAqduXXhXHToZPfCsHGnNBRIfAkqXoNRNY-Nxw==)
+[20260608 18:38:26.691 WARN  67:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
+java.nio.channels.UnresolvedAddressException: null
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:152)
+	at java.base/sun.nio.ch.SocketChannelImpl.checkRemote(SocketChannelImpl.java:918)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:936)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.SocketImpl.connect$ktor_network(SocketImpl.kt:44)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.ConnectUtilsJvmKt.tcpConnect(ConnectUtilsJvm.kt:21)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.TcpSocketBuilder.connect(TcpSocketBuilder.kt:48)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.ConnectionFactory.connect(ConnectionFactory.kt:30)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invokeSuspend(Endpoint.kt:215)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndspatched(Undispatched.kt:67)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturnIgnoreTimeout(Undispatched.kt:50)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.setupTimeout(Timeout.kt:149)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.withTimeoutOrNull(Timeout.kt:105)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.connect(Endpoint.kt:223)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.makeDedicatedRequest(Endpoint.kt:102)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.execute(Endpoint.kt:67)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.CIOEngine.execute(CIOEngine.kt:89)
+	at fleet.util.network@261.643/fleet.net.ProxyDelegatingClientEngine.execute(HttpProxyExtensions.kt:149)
+	at io.ktor.client.core@3.4.1/io.ktor.client.engine.HttpClientEngine$executeWithinCallContext$2.invokeSuspend(HttpClientEngine.kt:183)
+	at fleet.kotlin.runtime/kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at fleet.kotlin.runtime/kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at fleet.kotlin.runtime/kotlinx.coroutines.internal.SoftLimitedDispatcher$Worker.run(SoftLimitedDispatcher.kt:130)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:610)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:1188)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
+- UID: 2ur0o6gmc9b10f3vpkel
+- Running on Host ID: 7sulmps109mlcumg3e9a
+- Primary Host ID: 7sulmps109mlcumg3e9a
+- Lobby Address: https://lobby.fleet.api.jetbrains.com:443
+- Version: 261.643
+- Smart Mode: enabled
+- Published to JetBrains Relay: true
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=2ur0o6gmc9b10f3vpkel&session=8qE-e4jprem2J8TtwonY8i6_xrWYu07JLlpSSaMGGvs

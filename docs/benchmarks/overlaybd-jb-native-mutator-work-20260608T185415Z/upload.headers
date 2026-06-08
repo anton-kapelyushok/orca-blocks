@@ -1,0 +1,9 @@
+HTTP/1.1 202 Accepted
+Content-Length: 0
+Docker-Distribution-Api-Version: registry/2.0
+Docker-Upload-Uuid: 020357d2-3e97-4764-9f65-9614400ca05e
+Location: http://178.128.247.74:5000/v2/orca/overlaybd-jb-real/blobs/uploads/020357d2-3e97-4764-9f65-9614400ca05e?_state=qqF0j5Nl91zeyWzBPlxS58OwQiqCy3cIaRLJoF_m-bt7Ik5hbWUiOiJvcmNhL292ZXJsYXliZC1qYi1yZWFsIiwiVVVJRCI6IjAyMDM1N2QyLTNlOTctNDc2NC05ZjY1LTk2MTQ0MDBjYTA1ZSIsIk9mZnNldCI6MCwiU3RhcnRlZEF0IjoiMjAyNi0wNi0wOFQxODo1NDoyMS41NTIyOTQ1NzVaIn0%3D
+Range: 0-0
+X-Content-Type-Options: nosniff
+Date: Mon, 08 Jun 2026 18:54:21 GMT
+
