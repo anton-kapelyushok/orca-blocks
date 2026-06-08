@@ -65,9 +65,9 @@ copy_image() {
 
 runtime_list() {
   case "$RUNTIME" in
-    all) printf '%s\n' docker containerd podman ;;
-    docker|containerd|podman) printf '%s\n' "$RUNTIME" ;;
-    *) echo "unsupported RUNTIME=$RUNTIME; use docker, containerd, podman, or all" >&2; exit 2 ;;
+    all) printf '%s\n' plain docker containerd podman ;;
+    plain|docker|containerd|podman) printf '%s\n' "$RUNTIME" ;;
+    *) echo "unsupported RUNTIME=$RUNTIME; use plain, docker, containerd, podman, or all" >&2; exit 2 ;;
   esac
 }
 
@@ -124,6 +124,9 @@ EOF
 install_runtime_packages() {
   local runtime=$1
   case "$runtime" in
+    plain)
+      return 0
+      ;;
     docker)
       return 0
       ;;
@@ -198,6 +201,10 @@ timing "init_ready runtime=\$RUNTIME phase=\$PHASE"
 
 start_runtime() {
   case "\$RUNTIME" in
+    plain)
+      timing plain_ready_start
+      timing plain_ready
+      ;;
     docker)
       timing dockerd_start
       log "starting dockerd"
@@ -256,6 +263,7 @@ stop_runtime() {
 
 image_present() {
   case "\$RUNTIME" in
+    plain) return 0 ;;
     docker) docker image inspect orca/alpine-local:latest >/dev/null 2>&1 ;;
     containerd) ctr -n default images ls -q | grep -qx "\$IMAGE_REF" ;;
     podman) podman --storage-driver=vfs image exists orca/alpine-local:latest >/dev/null 2>&1 ;;
@@ -264,6 +272,10 @@ image_present() {
 
 ensure_image() {
   timing image_present_check_start
+  if [ "\$RUNTIME" = "plain" ]; then
+    timing image_already_present
+    return 0
+  fi
   if image_present; then
     timing image_already_present
     return 0
@@ -286,6 +298,10 @@ ensure_image() {
 
 require_image_present() {
   timing image_present_check_start
+  if [ "\$RUNTIME" = "plain" ]; then
+    timing image_already_present
+    return 0
+  fi
   if ! image_present; then
     log "expected warm image to exist but it was missing"
     case "\$RUNTIME" in
@@ -302,6 +318,9 @@ require_image_present() {
 run_container() {
   timing container_run_start
   case "\$RUNTIME" in
+    plain)
+      /bin/sh -c "\$CONTAINER_CMD" >/tmp/container-run.log 2>&1
+      ;;
     docker)
       docker run --rm --network=none orca/alpine-local:latest /bin/sh -c "\$CONTAINER_CMD" >/tmp/container-run.log 2>&1
       ;;
@@ -470,6 +489,9 @@ append_phase_results() {
       } else if (runtime == "podman") {
         ready_start = "podman_ready_start"
         ready_done = "podman_ready"
+      } else if (runtime == "plain") {
+        ready_start = "plain_ready_start"
+        ready_done = "plain_ready"
       }
 
       printf "\n[%s/%s]\n", runtime, phase

@@ -41,6 +41,8 @@ func main() {
 	direct := flag.Bool("direct", false, "open path with O_DIRECT on Linux")
 	readAheadKB := flag.Int("read-ahead-kb", -1, "set block device read_ahead_kb before reading; Linux only")
 	ioDepth := flag.Int("io-depth", 1, "number of concurrent ReadAt requests")
+	sleepAfterMS := flag.Int("sleep-after-ms", 0, "sleep after printing the result; useful when running as VM init")
+	hangAfterResult := flag.Bool("hang-after-result", false, "block forever after printing the result; useful when running as VM init")
 	flag.Parse()
 	if *ioDepth < 1 {
 		*ioDepth = 1
@@ -118,6 +120,12 @@ func main() {
 		fail("marshal result: %v", err)
 	}
 	fmt.Printf("DISK_BENCH_RESULT=%s\n", raw)
+	if *hangAfterResult {
+		select {}
+	}
+	if *sleepAfterMS > 0 {
+		time.Sleep(time.Duration(*sleepAfterMS) * time.Millisecond)
+	}
 }
 
 type readJob struct {

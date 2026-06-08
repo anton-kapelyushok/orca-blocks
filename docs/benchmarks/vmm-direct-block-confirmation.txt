@@ -1,0 +1,117 @@
+VMM Direct Block Confirmation
+date=2026-06-08
+host=DigitalOcean droplet root@178.128.247.74
+host_kernel=Linux 6.8.0-71-generic
+host_shape=2 vCPU, 4 GiB RAM, 80 GiB disk
+
+Purpose
+Check whether the host -> guest sequential-read gap is Firecracker-specific or an
+unavoidable VM/direct-block cost.
+
+Benchmark Shape
+- Same 256 MiB raw backing file for every row:
+  .tmp/firecracker-file-vs-nbd/bench.dat
+- Same benchmark binary:
+  .tmp/firecracker-file-vs-nbd/disk-bench
+- Sequential read with 1 MiB reads, iodepth=1, buffered reads.
+- Caches dropped before each run where the wrapper supports it.
+- No Docker Compose, no node service, no Orca NBD path.
+
+Results
+
+target                    throughput    duration    relative to host    notes
+------------------------  ------------  ----------  ----------------  -----------------------------------------------
+host file                 631 MiB/s      405 ms      1.00x             Direct host read baseline
+QEMU microvm virtio-blk   447 MiB/s      572 ms      0.71x             Host Ubuntu kernel, virtio-mmio
+QEMU q35 virtio-blk       415 MiB/s      616 ms      0.66x             Host Ubuntu kernel, virtio-blk-pci
+Firecracker virtio-blk    180 MiB/s      1421 ms     0.29x             Firecracker built-in virtio-blk
+Cloud Hypervisor          158-179 MiB/s  1426-1610ms 0.25-0.28x        Firecracker CI kernel, virtio-blk
+
+Note
+- QEMU q35 had one noisy first run at 195 MiB/s; the rerun landed at 415 MiB/s.
+- Cloud Hypervisor first failed with Firecracker's `pci=off` kernel arg. Without
+  `pci=off`, it exposed `/dev/vda` and produced repeated benchmark results while
+  reboot-looping after the tiny init exited. The usable result band was 158-179 MiB/s.
+
+Conclusion
+Yes, we checked it: the large sequential gap is not an unavoidable VM cost.
+QEMU direct-block gets much closer to host-file throughput than Firecracker or
+Cloud Hypervisor on this machine. Firecracker is about 3.5x slower than host file
+here, Cloud Hypervisor is in the same band, and QEMU microvm is about 1.4x slower.
+
+This means the remaining sequential-read problem has two layers:
+- Orca/NBD overhead, which we already reduced substantially with exact range reads.
+- Firecracker's direct virtio-blk path, which is still much slower than QEMU for
+  cold sequential reads on this host.
+
+Companion Startup Benchmark
+
+The existing startup benchmark measures time from runtime process launch until
+the first user command output appears for:
+
+    alpine:3.22 /bin/sh -lc "echo ORCA_STARTUP_MARKER"
+
+source: docs/benchmarks/vmm-startup-benchmark-results.txt
+
+runtime             first output    notes
+------------------  ------------  -----------------------------------------------
+Docker              286 ms        Host Docker baseline
+Firecracker         806 ms        Fastest VM startup in this setup
+Cloud Hypervisor    1009 ms       Close to Firecracker
+QEMU q35            1953 ms       Slower startup, faster direct block than Firecracker
+QEMU microvm        4737 ms       Fast direct block, slow here due to stock Ubuntu kernel
+
+Combined takeaway:
+- Firecracker has the better startup path in our current setup.
+- Cloud Hypervisor is close on startup, but does not improve direct-block throughput.
+- QEMU has the better direct-block sequential read path.
+- A QEMU-compatible lean kernel is the obvious next experiment if we want to see
+  whether QEMU can keep its disk advantage without the 4.7s microvm startup.
+
+Runtime Summary Table
+
+This table combines the startup benchmark, the direct non-NBD VMM disk benchmark,
+and the full Orca NBD benchmark after the range-read fix.
+
+Important:
+- Sequential reads use 1 MiB blocks, so sequential IOPS is effectively MiB/s.
+- Random reads use 4 KiB blocks.
+- NBD numbers are only measured for the current Orca path, which is
+  Firecracker + NBD + Orca storage/cache.
+- QEMU and Cloud Hypervisor NBD paths have not been benchmarked yet.
+
+runtime            startup    seq IOPS NBD/non-NBD    random IOPS NBD/non-NBD    notes
+-----------------  ---------  ----------------------  -------------------------  ----------------------------------------------
+Docker             286 ms     - / 1072                - / 11536                  Host Docker baseline, no NBD path
+Firecracker        806 ms     73-96 / 169             1464-1574 / 4511           NBD is full Orca warm-cache path
+Cloud Hypervisor   1009 ms    - / 164                 - / 4653                   Direct block similar to Firecracker
+QEMU q35           1953 ms    - / 456                 - / 4732                   Fast direct block, slower startup
+QEMU microvm       4737 ms    - / 445                 - / 4071                   Fast direct block, slow with stock Ubuntu kernel
+
+Latest direct-block confirmation on the upgraded host:
+
+runtime            seq IOPS non-NBD    notes
+-----------------  ------------------  ----------------------------------------------
+host file          631                 256 MiB file, 1 MiB reads
+Firecracker        180                 Same shape as host file
+Cloud Hypervisor   158-179             Same shape as host file
+QEMU q35           415                 Same shape as host file
+QEMU microvm       447                 Same shape as host file
+
+Commands Used
+
+Host baseline:
+
+    ssh root@178.128.247.74 'cd ~/orca-blocks && sync && echo 3 > /proc/sys/vm/drop_caches && .tmp/firecracker-file-vs-nbd/disk-bench -kind host-file-sequential -mode sequential -path .tmp/firecracker-file-vs-nbd/bench.dat -size-bytes $((256*1024*1024)) -block-bytes $((1024*1024)) -random-ops 4096 -io-depth 1'
+
+Firecracker:
+
+    ssh root@178.128.247.74 'cd ~/orca-blocks && FC_FILE_NBD_RESULTS_FILE=docs/benchmarks/vmm-direct-block-confirmation-firecracker.txt FC_FILE_NBD_TARGETS=file FC_FILE_NBD_MODES=sequential FC_FILE_NBD_SIZE_MB=256 FC_FILE_NBD_RANDOM_OPS=4096 FC_FILE_NBD_TIMEOUT_SECONDS=60 ./scripts/measure-firecracker-file-vs-nbd.py'
+
+QEMU microvm:
+
+    ssh root@178.128.247.74 'cd ~/orca-blocks && QEMU_MACHINE=microvm DISK_BENCH_MODES=sequential DISK_BENCH_SIZE_BYTES=$((256*1024*1024)) DISK_BENCH_RANDOM_OPS=4096 DISK_BENCH_DATA_PATH=.tmp/firecracker-file-vs-nbd/bench.dat DISK_BENCH_BIN=.tmp/firecracker-file-vs-nbd/disk-bench QEMU_KERNEL=/boot/vmlinuz-$(uname -r) QEMU_TIMEOUT_SECONDS=60 ./scripts/measure-qemu-disk.py'
+
+QEMU q35:
+
+    ssh root@178.128.247.74 'cd ~/orca-blocks && QEMU_MACHINE=q35 DISK_BENCH_MODES=sequential DISK_BENCH_SIZE_BYTES=$((256*1024*1024)) DISK_BENCH_RANDOM_OPS=4096 DISK_BENCH_DATA_PATH=.tmp/firecracker-file-vs-nbd/bench.dat DISK_BENCH_BIN=.tmp/firecracker-file-vs-nbd/disk-bench QEMU_KERNEL=/boot/vmlinuz-$(uname -r) QEMU_TIMEOUT_SECONDS=60 ./scripts/measure-qemu-disk.py'

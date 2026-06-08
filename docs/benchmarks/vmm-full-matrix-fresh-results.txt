@@ -1,0 +1,67 @@
+VMM Full Matrix Fresh Results
+date=2026-06-08T00:46Z
+host=DigitalOcean droplet root@178.128.247.74
+host_kernel=Linux 6.8.0-71-generic
+host_shape=2 vCPU, 4 GiB RAM, 80 GiB disk
+
+Purpose
+Fresh full benchmark for Docker, Firecracker, Cloud Hypervisor, and QEMU q35.
+QEMU microvm intentionally excluded.
+
+Startup Shape
+- image: alpine:3.22
+- command: echo ORCA_STARTUP_MARKER
+- metric: runtime process launch until first user command output
+- rootfs size for VM runtimes: 512 MiB ext4
+- guest memory: 256 MiB
+- guest vcpus: 1
+
+Block Shape
+- data file: .tmp/firecracker-file-vs-nbd/bench.dat
+- data size: 256 MiB
+- sequential: 1 MiB reads, iodepth=1
+- random: 4096 reads of 4 KiB each, iodepth=1
+- caches dropped before each row
+- NBD backend: local-nbd-file-server in exact range mode
+- VM block benchmark runs disk-bench as initramfs init and keeps init alive after result
+
+Results
+
+runtime            startup    seq IOPS NBD/non-NBD    random IOPS NBD/non-NBD    notes
+-----------------  ---------  ----------------------  -------------------------  ----------------------------------------------
+Docker             471 ms     153 / 525               1455 / 2133                Host Docker baseline; NBD via --device /dev/nbdX
+Firecracker        1003 ms    84 / 163                796 / 758                  Best startup VM; weak sequential block
+Cloud Hypervisor   1527 ms    108 / 150               1105 / 1778                Better random than Firecracker in this run
+QEMU q35           2729 ms    110 / 400               596 / 838                  Best direct sequential; startup is slowest here
+
+Raw Block Rows
+
+runtime             target  mode        MiB/s  IOPS  duration_ms  wall_ms
+------------------  ------  ----------  -----  ----  -----------  -------
+Docker              file    sequential  525    525   487          1808
+Docker              file    random      8      2133  1920         3254
+Docker              nbd     sequential  153    153   1666         2694
+Docker              nbd     random      5      1455  2813         3985
+Firecracker         file    sequential  163    163   1563         3533
+Firecracker         file    random      2      758   5400         7265
+Firecracker         nbd     sequential  84     84    3014         4987
+Firecracker         nbd     random      3      796   5144         6952
+Cloud Hypervisor    file    sequential  150    150   1698         2520
+Cloud Hypervisor    file    random      6      1778  2303         3097
+Cloud Hypervisor    nbd     sequential  108    108   2364         3171
+Cloud Hypervisor    nbd     random      4      1105  3705         4560
+QEMU q35            file    sequential  400    400   638          3964
+QEMU q35            file    random      3      838   4882         8363
+QEMU q35            nbd     sequential  110    110   2313         5916
+QEMU q35            nbd     random      2      596   6865         10172
+
+Interpretation
+- QEMU q35 is still the most promising direct-block runtime: 400 MiB/s sequential vs 163 MiB/s Firecracker and 150 MiB/s Cloud Hypervisor.
+- QEMU q35 loses most of that advantage through the current NBD backend: 110 MiB/s NBD sequential.
+- Firecracker still wins startup among VM runtimes: 1003 ms vs Cloud 1527 ms vs QEMU q35 2729 ms.
+- Cloud Hypervisor is not better for sequential direct block, but it had the strongest random direct row in this fresh run.
+- NBD is a large limiter across all runtimes, including Docker, so frontend/backend choice still matters a lot.
+
+Source Per-Row Files
+- .tmp/vmm-block-matrix/one-by-one-*.txt
+- .tmp/vmm-startup/startup-20260608T004631Z
