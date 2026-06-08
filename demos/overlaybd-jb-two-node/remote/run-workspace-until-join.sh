@@ -98,7 +98,7 @@ echo
 echo "| metric | value |"
 echo "| --- | ---: |"
 echo "| rpull | ${rpull_ms} ms |"
-echo "| first output after run | ${first_ms:-not seen} ms |"
+echo "| first user text appears | ${first_ms:-not seen} ms |"
 echo "| Dock HTTP API | ${dock_ms:-not seen} ms |"
 echo "| Workspace Server | ${workspace_ms:-not seen} ms |"
 echo "| Join URL | ${join_ms:-not seen} ms |"

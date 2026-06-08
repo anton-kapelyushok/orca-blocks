@@ -91,5 +91,5 @@ echo
 echo "| metric | value |"
 echo "| --- | ---: |"
 echo "| rpull | ${rpull_ms} ms |"
-echo "| first output before verify | ${first_ms:-not seen} ms |"
+echo "| first user text appears | ${first_ms:-not seen} ms |"
 echo "| verify marker after run | ${verify_ms} ms |"

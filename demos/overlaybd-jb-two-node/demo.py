@@ -19,34 +19,39 @@ RESET = "\033[0m"
 
 @dataclass(frozen=True)
 class Config:
-    node1: str
-    node2: str
+    master: str
+    slave: str
     registry: str
-    node2_registry: str
+    master_registry: str
     repo: str
     base_tag: str
     run_id: str
     derived_tag: str
-    touch_path: str
+    project_dir: str
     timeout_seconds: int
     yes: bool
     dry_run: bool
+    show_commands: bool
 
     @property
-    def base_image_node1(self) -> str:
+    def base_image_master(self) -> str:
+        return f"{self.master_registry}/{self.repo}:{self.base_tag}"
+
+    @property
+    def base_image_slave(self) -> str:
         return f"{self.registry}/{self.repo}:{self.base_tag}"
 
     @property
-    def base_image_node2(self) -> str:
-        return f"{self.node2_registry}/{self.repo}:{self.base_tag}"
+    def derived_image_master(self) -> str:
+        return f"{self.master_registry}/{self.repo}:{self.derived_tag}"
 
     @property
-    def derived_image_node1(self) -> str:
+    def derived_image_slave(self) -> str:
         return f"{self.registry}/{self.repo}:{self.derived_tag}"
 
     @property
-    def derived_image_node2(self) -> str:
-        return f"{self.node2_registry}/{self.repo}:{self.derived_tag}"
+    def jar_path(self) -> str:
+        return f"{self.project_dir}/target/spring-petclinic-4.0.0-SNAPSHOT.jar"
 
 
 @dataclass(frozen=True)
@@ -75,15 +80,16 @@ def utc_stamp() -> str:
 def print_config(config: Config) -> None:
     print(
         f"""Demo configuration:
-  node1:              {config.node1}
-  node2:              {config.node2}
+  master:             {config.master}
+  slave:              {config.slave}
   registry:           {config.registry}
-  node2 registry ref: {config.node2_registry}
-  base node1 image:   {config.base_image_node1}
-  base node2 image:   {config.base_image_node2}
-  derived node1 ref:  {config.derived_image_node1}
-  derived node2 ref:  {config.derived_image_node2}
-  touched file:       {config.touch_path}
+  master registry ref:{config.master_registry}
+  base master image:  {config.base_image_master}
+  base slave image:   {config.base_image_slave}
+  derived master ref: {config.derived_image_master}
+  derived slave ref:  {config.derived_image_slave}
+  project dir:        {config.project_dir}
+  jar path:           {config.jar_path}
   run id:             {config.run_id}
 """
     )
@@ -93,11 +99,13 @@ def base_env(config: Config) -> dict[str, str]:
     return {
         "RUN_ID": config.run_id,
         "REGISTRY_HOST": config.registry,
-        "NODE2_REGISTRY_HOST": config.node2_registry,
+        "MASTER_REGISTRY_HOST": config.master_registry,
+        "NODE2_REGISTRY_HOST": config.master_registry,
         "REPO": config.repo,
         "BASE_TAG": config.base_tag,
         "DERIVED_TAG": config.derived_tag,
-        "TOUCH_PATH": config.touch_path,
+        "TOUCH_PATH": config.jar_path,
+        "PROJECT_DIR": config.project_dir,
         "TIMEOUT_SECONDS": str(config.timeout_seconds),
     }
 
@@ -137,6 +145,9 @@ def interpolate_command(command: str, env: dict[str, str]) -> str:
         "BASE_REF": f"{env['REGISTRY_HOST']}/{env['REPO']}:{env['BASE_TAG']}",
         "DERIVED_REF": f"{env['REGISTRY_HOST']}/{env['REPO']}:{env['DERIVED_TAG']}",
         "TOUCH_DIR": str(Path(env["TOUCH_PATH"]).parent),
+        "PROJECT_PARENT": str(Path(env["PROJECT_DIR"]).parent),
+        "PROJECT_NAME": Path(env["PROJECT_DIR"]).name,
+        "JAR_PATH": f"{env['PROJECT_DIR']}/target/spring-petclinic-4.0.0-SNAPSHOT.jar",
     }
     if "CONTAINER_NAME" in env:
         derived["NAME"] = env["CONTAINER_NAME"]
@@ -174,7 +185,11 @@ def build_remote(config: Config, step: RemoteStep) -> tuple[dict[str, str], str,
 def preview_remote(config: Config, step: RemoteStep) -> None:
     env, env_prefix, script = build_remote(config, step)
     shell = remote_shell(step.target, env_prefix)
-    print(f"\nWill execute {step.label}: ssh {step.target} '{shell}' < {REMOTE_DIR / step.script_name}")
+    print(f"\nWill run {step.script_name} on {step.label} ({step.target})")
+    if not config.show_commands:
+        return
+
+    print(f"SSH: ssh {step.target} '{shell}' < {REMOTE_DIR / step.script_name}")
     demo_commands = extract_demo_commands(script)
     if demo_commands:
         print("Main commands:")
@@ -185,7 +200,10 @@ def preview_remote(config: Config, step: RemoteStep) -> None:
 def execute_remote(config: Config, step: RemoteStep) -> None:
     env, env_prefix, script = build_remote(config, step)
     shell = remote_shell(step.target, env_prefix)
-    print(f"\nExecuting {step.label}: ssh {step.target} '{shell}' < {REMOTE_DIR / step.script_name}")
+    if config.show_commands:
+        print(f"\nExecuting {step.label}: ssh {step.target} '{shell}' < {REMOTE_DIR / step.script_name}")
+    else:
+        print(f"\nExecuting {step.script_name} on {step.label} ({step.target})")
     print("Logs follow from the remote command output.\n")
 
     if config.dry_run:
@@ -235,34 +253,40 @@ def run_step(
 
 def parse_args() -> Config:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    parser = argparse.ArgumentParser(description="Two-node OverlayBD JB Workspace demo")
-    parser.add_argument("--node1", default="anton.kapeliushok@104.155.88.61")
-    parser.add_argument("--node2", default="root@178.128.247.74")
+    parser = argparse.ArgumentParser(description="Master/slave OverlayBD JB Workspace demo")
+    parser.add_argument("--master", default="root@178.128.247.74")
+    parser.add_argument("--slave", default="anton.kapeliushok@104.155.88.61")
     parser.add_argument("--registry", default="178.128.247.74:5000")
-    parser.add_argument("--node2-registry", default="127.0.0.1:5000")
+    parser.add_argument("--master-registry", default="127.0.0.1:5000")
     parser.add_argument("--repo", default="orca/overlaybd-jb-real")
     parser.add_argument("--base-tag", default="obd-jb-real-sysbox-20260608T171059Z")
     parser.add_argument("--run-id", default=run_id)
     parser.add_argument("--derived-tag")
-    parser.add_argument("--touch-path", default="/home/workspace-agent/poupa-demo.txt")
-    parser.add_argument("--timeout-seconds", type=int, default=180)
+    parser.add_argument("--project-dir", default="/home/workspace-agent/spring-petclinic")
+    parser.add_argument("--timeout-seconds", type=int, default=900)
     parser.add_argument("--yes", action="store_true", help="do not pause between steps")
-    parser.add_argument("--dry-run", action="store_true", help="print commands without running SSH")
+    parser.add_argument("--dry-run", action="store_true", help="walk the scenario without running SSH")
+    parser.add_argument(
+        "--show-commands",
+        action="store_true",
+        help="print expanded SSH and main remote commands before each confirmation",
+    )
     args = parser.parse_args()
-    derived_tag = args.derived_tag or f"demo-touch-{args.run_id}"
+    derived_tag = args.derived_tag or f"petclinic-build-{args.run_id}"
     return Config(
-        node1=args.node1,
-        node2=args.node2,
+        master=args.master,
+        slave=args.slave,
         registry=args.registry,
-        node2_registry=args.node2_registry,
+        master_registry=args.master_registry,
         repo=args.repo,
         base_tag=args.base_tag,
         run_id=args.run_id,
         derived_tag=derived_tag,
-        touch_path=args.touch_path,
+        project_dir=args.project_dir,
         timeout_seconds=args.timeout_seconds,
         yes=args.yes,
         dry_run=args.dry_run,
+        show_commands=args.show_commands,
     )
 
 
@@ -271,108 +295,122 @@ def main() -> int:
     print_config(config)
     scenario = [
         ScenarioStep(
-            "clean up demo environments on both nodes",
+            "clean up demo environments on master and slave",
             "cleanup",
             [
-                RemoteStep("node1", config.node1, "cleanup.sh"),
-                RemoteStep("node2", config.node2, "cleanup.sh"),
+                RemoteStep("master", config.master, "cleanup.sh"),
+                RemoteStep("slave", config.slave, "cleanup.sh"),
             ],
         ),
         ScenarioStep(
-            "run JB workspace on node1 until Join URL",
-            "node1 base run",
+            "run JB workspace on master until Join URL",
+            "master workspace cold",
             [
                 RemoteStep(
-                    "node1",
-                    config.node1,
+                    "master",
+                    config.master,
                     "run-workspace-until-join.sh",
                     {
-                        "IMAGE_REF": config.base_image_node1,
+                        "IMAGE_REF": config.base_image_master,
                         "KEEP_AFTER_JOIN": "0",
-                        "CONTAINER_NAME": f"demo-jb-node1-base-{config.run_id}",
+                        "CONTAINER_NAME": f"demo-jb-master-workspace-cold-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "run JB workspace on node2 until Join URL",
-            "node2 base run",
+            "run JB workspace on slave until Join URL",
+            "slave workspace cold",
             [
                 RemoteStep(
-                    "node2",
-                    config.node2,
+                    "slave",
+                    config.slave,
                     "run-workspace-until-join.sh",
                     {
-                        "IMAGE_REF": config.base_image_node2,
+                        "IMAGE_REF": config.base_image_slave,
                         "KEEP_AFTER_JOIN": "0",
-                        "CONTAINER_NAME": f"demo-jb-node2-base-{config.run_id}",
+                        "CONTAINER_NAME": f"demo-jb-slave-workspace-cold-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "warm-run JB workspace on node1 until Join URL",
-            "node1 warm base run",
+            "warm-run JB workspace on slave until Join URL",
+            "slave workspace hot",
             [
                 RemoteStep(
-                    "node1",
-                    config.node1,
+                    "slave",
+                    config.slave,
                     "run-workspace-until-join.sh",
                     {
-                        "IMAGE_REF": config.base_image_node1,
+                        "IMAGE_REF": config.base_image_slave,
                         "KEEP_AFTER_JOIN": "0",
-                        "CONTAINER_NAME": f"demo-jb-node1-warm-{config.run_id}",
+                        "CONTAINER_NAME": f"demo-jb-slave-workspace-hot-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "touch a file in a node1 overlayfs upperdir run",
-            "node1 touch file",
+            "clone and build Spring Petclinic on slave with warm workspace layers",
+            "slave clone+build coldish",
             [
                 RemoteStep(
-                    "node1",
-                    config.node1,
-                    "mutable-touch.sh",
+                    "slave",
+                    config.slave,
+                    "petclinic-build-mutable.sh",
                     {
-                        "IMAGE_REF": config.base_image_node1,
-                        "CONTAINER_NAME": f"demo-jb-node1-mutable-{config.run_id}",
+                        "IMAGE_REF": config.base_image_slave,
+                        "CONTAINER_NAME": f"demo-jb-slave-petclinic-build-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "export node1 overlay upperdir and push derived image",
+            "export slave overlay upperdir and push derived image",
             "commit derived image",
-            [RemoteStep("node1", config.node1, "commit-snapshot.sh")],
+            [RemoteStep("slave", config.slave, "commit-snapshot.sh")],
         ),
         ScenarioStep(
-            "run new committed image on node2 until Join URL",
-            "node2 derived run",
+            "run Maven package on slave from first-use derived image",
+            "slave build coldish",
             [
                 RemoteStep(
-                    "node2",
-                    config.node2,
-                    "run-workspace-until-join.sh",
+                    "slave",
+                    config.slave,
+                    "petclinic-build-repeat.sh",
                     {
-                        "IMAGE_REF": config.derived_image_node2,
-                        "KEEP_AFTER_JOIN": "0",
-                        "CONTAINER_NAME": f"demo-jb-node2-derived-{config.run_id}",
+                        "IMAGE_REF": config.derived_image_slave,
+                        "CONTAINER_NAME": f"demo-jb-slave-petclinic-coldish-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "verify touched file is present in node2 committed image",
-            "verify touched file",
+            "run Maven package on master from first-use derived image",
+            "master build coldish",
             [
                 RemoteStep(
-                    "node2",
-                    config.node2,
-                    "verify-touch.sh",
+                    "master",
+                    config.master,
+                    "petclinic-build-repeat.sh",
                     {
-                        "IMAGE_REF": config.derived_image_node2,
-                        "CONTAINER_NAME": f"demo-jb-node2-verify-{config.run_id}",
+                        "IMAGE_REF": config.derived_image_master,
+                        "CONTAINER_NAME": f"demo-jb-master-petclinic-coldish-{config.run_id}",
+                    },
+                )
+            ],
+        ),
+        ScenarioStep(
+            "warm-run Maven package on master from derived image",
+            "master build warm",
+            [
+                RemoteStep(
+                    "master",
+                    config.master,
+                    "petclinic-build-repeat.sh",
+                    {
+                        "IMAGE_REF": config.derived_image_master,
+                        "CONTAINER_NAME": f"demo-jb-master-petclinic-warm-{config.run_id}",
                     },
                 )
             ],
@@ -389,8 +427,8 @@ def main() -> int:
 
     print("\nDemo complete")
     print("Derived image:")
-    print(f"  node1/global: {config.derived_image_node1}")
-    print(f"  node2/local:  {config.derived_image_node2}")
+    print(f"  master/local: {config.derived_image_master}")
+    print(f"  slave/global: {config.derived_image_slave}")
     return 0
 
 
