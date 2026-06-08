@@ -1,22 +1,96 @@
+Firecracker File vs NBD Range vs NBD 4 MiB Chunk
+================================================
 
-firecracker-file-vs-nbd run 2026-06-07T22:52:05Z
-data_file=.tmp/firecracker-file-vs-nbd/bench.dat
-nbd_device=/dev/nbd2
-size_mb=256 random_ops=4096 io_depths=1 direct=false drop_caches=true
+Purpose
+-------
 
-target	mode	io_depth	mb_per_sec	iops	duration_ms	wall_ms	block_bytes	ops	bytes_read	checksum
-file	sequential	1	179	179	1422	3107	1048576	256	268435456	10454131386436132307
-nbd	sequential	1	101	101	2518	4064	1048576	256	268435456	10454131386436132307
-file	random	1	5	1470	2785	4549	4096	4096	16777216	4085861101163487048
-nbd	random	1	4	1087	3765	5316	4096	4096	16777216	4085861101163487048
+Measure the block-device path inside Firecracker while changing only the host-side backing implementation:
 
-firecracker-file-vs-nbd run 2026-06-07T22:52:29Z
-data_file=.tmp/firecracker-file-vs-nbd/bench.dat
-nbd_device=/dev/nbd2
-size_mb=16 random_ops=512 io_depths=1 direct=false drop_caches=true
+- `file`: Firecracker block device backed directly by a host file.
+- `nbd-range`: Firecracker block device backed by `/dev/nbdX`; the NBD server reads exactly the requested byte range.
+- `nbd-chunk`: Firecracker block device backed by `/dev/nbdX`; the NBD server emulates Orca-style 4 MiB chunk reads, then returns only the requested slice.
 
-target	mode	io_depth	mb_per_sec	iops	duration_ms	wall_ms	block_bytes	ops	bytes_read	checksum
-file	sequential	1	159	159	100	1925	1048576	16	16777216	11436611235799233722
-nbd	sequential	1	117	117	135	1683	1048576	16	16777216	11436611235799233722
-file	random	1	5	1427	358	1975	4096	512	2097152	1590318823782147512
-nbd	random	1	3	882	579	2224	4096	512	2097152	1590318823782147512
+Common config:
+
+- `io_depth=1`
+- `direct=false`
+- `drop_caches=true`
+- sequential block size: 1 MiB
+- random block size: 4 KiB
+- Firecracker guest runs the tiny `disk-bench` initramfs
+
+Conclusion
+----------
+
+Normal NBD overhead is not the main problem. `nbd-range` is slower than direct file access, but still far above the Orca env numbers.
+
+The 4 MiB chunk-emulated backend reproduces the bad shape:
+
+- Sequential drops to `23-28 MiB/s`.
+- Random drops to `224-238 IOPS`.
+
+Those are close to the full Orca warm-cache results:
+
+- Orca warm sequential: about `20 MiB/s`
+- Orca warm random: about `164-176 IOPS`
+
+So the likely culprit is read granularity in the Orca storage path: small guest reads are probably causing whole 4 MiB local chunk reads. The fix should preserve 4 MiB chunk objects for durable storage, but use ranged reads inside local cached chunk files.
+
+16 MiB Dataset
+--------------
+
+Sequential read, 1 MiB blocks:
+
+    Target       Backend behavior                 Throughput     Duration
+    ----------   ------------------------------   ------------   --------
+    file         Direct Firecracker file block     101.27 MiB/s    158 ms
+    nbd-range    NBD, exact range reads            103.90 MiB/s    154 ms
+    nbd-chunk    NBD, forced 4 MiB reads            23.74 MiB/s    674 ms
+
+Random read, 512 ops, 4 KiB blocks:
+
+    Target       Backend behavior                 IOPS   Throughput    Duration
+    ----------   ------------------------------   ----   -----------   --------
+    file         Direct Firecracker file block      699   2.74 MiB/s      731 ms
+    nbd-range    NBD, exact range reads            1153   4.50 MiB/s      444 ms
+    nbd-chunk    NBD, forced 4 MiB reads            238   0.93 MiB/s     2146 ms
+
+256 MiB Dataset
+---------------
+
+Sequential read, 1 MiB blocks:
+
+    Target       Backend behavior                 Throughput     Duration
+    ----------   ------------------------------   ------------   --------
+    file         Direct Firecracker file block     175.58 MiB/s   1458 ms
+    nbd-range    NBD, exact range reads             97.41 MiB/s   2628 ms
+    nbd-chunk    NBD, forced 4 MiB reads            28.22 MiB/s   9071 ms
+
+Random read, 4096 ops, 4 KiB blocks:
+
+    Target       Backend behavior                 IOPS   Throughput    Duration
+    ----------   ------------------------------   ----   -----------   --------
+    file         Direct Firecracker file block     1139   4.45 MiB/s     3595 ms
+    nbd-range    NBD, exact range reads             827   3.23 MiB/s     4952 ms
+    nbd-chunk    NBD, forced 4 MiB reads            224   0.88 MiB/s    18234 ms
+
+Raw Run Metadata
+----------------
+
+First run:
+
+- timestamp: `2026-06-07T23:11:11Z`
+- data file: `.tmp/firecracker-file-vs-nbd/bench.dat`
+- nbd device: `/dev/nbd2`
+- dataset: `16 MiB`
+- random ops: `512`
+- checksums matched across all targets
+
+Second run:
+
+- timestamp: `2026-06-07T23:12:36Z`
+- data file: `.tmp/firecracker-file-vs-nbd/bench.dat`
+- nbd device: `/dev/nbd2`
+- dataset: `256 MiB`
+- random ops: `4096`
+- checksums matched across all targets

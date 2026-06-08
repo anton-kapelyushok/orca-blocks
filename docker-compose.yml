@@ -116,6 +116,7 @@ services:
       S3_BUCKET: orca-blocks
       CACHE_DIR: /cache
       CACHE_MAX_BYTES: "536870912"
+      CACHE_MEMORY_MAX_BYTES: "134217728"
       WORK_DIR: /work
       ORCA_INIT_BIN: /orca-init
       CONTAINER_RUNTIME: docker
@@ -179,10 +180,12 @@ services:
       S3_BUCKET: orca-blocks
       CACHE_DIR: /cache
       CACHE_MAX_BYTES: "67108864"
+      CACHE_MEMORY_MAX_BYTES: "134217728"
       PORT: "8080"
       NBD_ADDR: :10809
       NBD_PUBLIC_ADDR: localhost:11081
       NBD_COMMIT_BATCH_CHUNKS: "16"
+      NBD_READ_AHEAD_BYTES: "0"
       NBD_DEVICE_PREFIX: /dev/nbd
       NBD_DEVICE_START: "0"
       NBD_DEVICE_COUNT: "8"
@@ -237,10 +240,12 @@ services:
       S3_BUCKET: orca-blocks
       CACHE_DIR: /cache
       CACHE_MAX_BYTES: "67108864"
+      CACHE_MEMORY_MAX_BYTES: "134217728"
       PORT: "8080"
       NBD_ADDR: :10809
       NBD_PUBLIC_ADDR: localhost:11082
       NBD_COMMIT_BATCH_CHUNKS: "16"
+      NBD_READ_AHEAD_BYTES: "0"
       NBD_DEVICE_PREFIX: /dev/nbd
       NBD_DEVICE_START: "8"
       NBD_DEVICE_COUNT: "8"

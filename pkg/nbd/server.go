@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 )
 
 const (
@@ -44,12 +45,17 @@ type Device interface {
 	Disconnect(ctx context.Context) error
 }
 
+type ReadAtIntoDevice interface {
+	ReadAtInto(ctx context.Context, offset int64, dst []byte) (int, error)
+}
+
 type DeviceResolver func(exportName string) (Device, error)
 
 type Server struct {
 	Device  Device
 	Resolve DeviceResolver
 	Logger  *log.Logger
+	Stats   *StatsCollector
 }
 
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
@@ -221,13 +227,15 @@ func (s *Server) handleRequest(ctx context.Context, rw io.ReadWriter, device Dev
 	switch cmd {
 	case cmdRead:
 		s.logf("nbd read offset=%d length=%d", offset, length)
-		data, err := device.ReadAt(ctx, offset, length)
-		if err != nil {
-			return true, writeReply(rw, handle, 5, nil)
+		if s.Stats != nil {
+			s.Stats.RecordRead(offset, length)
 		}
-		return true, writeReply(rw, handle, 0, data)
+		return true, s.writeReadReply(ctx, rw, device, handle, offset, length)
 	case cmdWrite:
 		s.logf("nbd write offset=%d length=%d", offset, length)
+		if s.Stats != nil {
+			s.Stats.RecordWrite(length)
+		}
 		data := make([]byte, int(length))
 		if _, err := io.ReadFull(rw, data); err != nil {
 			return false, err
@@ -238,12 +246,18 @@ func (s *Server) handleRequest(ctx context.Context, rw io.ReadWriter, device Dev
 		return true, writeReply(rw, handle, 0, nil)
 	case cmdFlush:
 		s.logf("nbd flush")
+		if s.Stats != nil {
+			s.Stats.RecordFlush()
+		}
 		if err := device.Flush(ctx); err != nil {
 			return true, writeReply(rw, handle, 5, nil)
 		}
 		return true, writeReply(rw, handle, 0, nil)
 	case cmdDisconnect:
 		s.logf("nbd disconnect")
+		if s.Stats != nil {
+			s.Stats.RecordDisconnect()
+		}
 		if err := device.Disconnect(ctx); err != nil {
 			return false, err
 		}
@@ -251,6 +265,28 @@ func (s *Server) handleRequest(ctx context.Context, rw io.ReadWriter, device Dev
 	default:
 		return true, writeReply(rw, handle, 22, nil)
 	}
+}
+
+func (s *Server) writeReadReply(ctx context.Context, rw io.Writer, device Device, handle uint64, offset, length int64) error {
+	if into, ok := device.(ReadAtIntoDevice); ok {
+		buf := getBuffer(int(length))
+		defer putBuffer(buf)
+		n, err := into.ReadAtInto(ctx, offset, buf[:int(length)])
+		if err != nil {
+			return writeReply(rw, handle, 5, nil)
+		}
+		if n < int(length) {
+			clear(buf[n:int(length)])
+			n = int(length)
+		}
+		return writeReply(rw, handle, 0, buf[:n])
+	}
+
+	data, err := device.ReadAt(ctx, offset, length)
+	if err != nil {
+		return writeReply(rw, handle, 5, nil)
+	}
+	return writeReply(rw, handle, 0, data)
 }
 
 func (s *Server) resolveDevice(exportName string) (Device, error) {
@@ -302,4 +338,28 @@ func (s *Server) logf(format string, args ...any) {
 
 type readerOnly struct {
 	io.Reader
+}
+
+var readBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 128*1024)
+		return &buf
+	},
+}
+
+func getBuffer(length int) []byte {
+	raw := readBufferPool.Get().(*[]byte)
+	buf := *raw
+	if cap(buf) < length {
+		buf = make([]byte, length)
+	}
+	return buf[:length]
+}
+
+func putBuffer(buf []byte) {
+	if cap(buf) > maxRequestBytes {
+		return
+	}
+	buf = buf[:cap(buf)]
+	readBufferPool.Put(&buf)
 }

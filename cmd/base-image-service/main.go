@@ -84,7 +84,11 @@ func main() {
 	)
 	must(err)
 
-	cache, err := storage.NewLocalCache(getenv("CACHE_DIR", "/cache"), mustInt64(getenv("CACHE_MAX_BYTES", "536870912")))
+	cache, err := storage.NewLocalCacheWithMemory(
+		getenv("CACHE_DIR", "/cache"),
+		mustInt64(getenv("CACHE_MAX_BYTES", "536870912")),
+		mustInt64(getenv("CACHE_MEMORY_MAX_BYTES", "134217728")),
+	)
 	must(err)
 
 	a := &app{

@@ -1,0 +1,91 @@
+KVM Host Disk and Firecracker Sequential Tuning
+===============================================
+
+Purpose
+-------
+
+Answer two questions:
+
+1. Is the KVM host disk itself slow?
+2. Can the standalone Firecracker/NBD sequential-read path be improved with simple knobs?
+
+Host Disk Test
+--------------
+
+Command shape:
+
+- `fio`
+- `direct=1`
+- `ioengine=sync`
+- `iodepth=1`
+- `numjobs=1`
+- sequential block size: 1 MiB
+- random block size: 4 KiB
+- file: `/root/orca-blocks/.tmp/host-fio/bench.dat`
+
+Results:
+
+    Target      Mode         Throughput      IOPS      Runtime
+    ---------   ----------   ------------   -------   --------
+    host disk   sequential    432.98 MiB/s    432.98    2365 ms
+    host disk   random         11.68 MiB/s   2990.05   20001 ms
+
+Conclusion:
+
+The host disk is not the limiting factor. It is faster than the Daytona sample for this test shape.
+
+Firecracker Sequential Tuning
+-----------------------------
+
+Common config:
+
+- remote KVM host: `178.128.247.74`
+- data file: `.tmp/firecracker-file-vs-nbd/bench.dat`
+- dataset: 256 MiB
+- `direct=false`
+- `drop_caches=true`
+- targets: `file`, `nbd-range`
+
+Results:
+
+    Variant          Target      Block Size   IO Depth   Readahead      Throughput   Duration
+    --------------   ---------   ----------   --------   ---------   -------------   --------
+    default          file        1 MiB               1   default       182 MiB/s     1404 ms
+    default          nbd-range   1 MiB               1   default        83 MiB/s     3064 ms
+
+    readahead_4096   file        1 MiB               1   4096 KiB      179 MiB/s     1427 ms
+    readahead_4096   nbd-range   1 MiB               1   4096 KiB       75 MiB/s     3383 ms
+
+    seq_block_4m     file        4 MiB               1   default       173 MiB/s     1472 ms
+    seq_block_4m     nbd-range   4 MiB               1   default        97 MiB/s     2627 ms
+
+    io_depth_4       file        1 MiB               4   default       153 MiB/s     1664 ms
+    io_depth_4       nbd-range   1 MiB               4   default        80 MiB/s     3196 ms
+
+    io_depth_8       file        1 MiB               8   default       149 MiB/s     1714 ms
+    io_depth_8       nbd-range   1 MiB               8   default        83 MiB/s     3054 ms
+
+Notes:
+
+- `O_DIRECT` was attempted, but this script hit a serial-output race where the guest printed only a partial `DISK_BENCH_RESULT` marker before shutdown. The case is excluded from the table.
+- All successful rows read the same 256 MiB dataset and produced matching checksums per variant.
+
+Conclusion
+----------
+
+The host disk has enough headroom: `433 MiB/s` sequential and `2990 IOPS` random.
+
+The simple seq knobs did not close the gap:
+
+- Guest readahead did not help. It made `nbd-range` slightly worse: `83 -> 75 MiB/s`.
+- Higher IO depth did not help: `nbd-range` stayed around `80-83 MiB/s`.
+- Larger request size helped: `nbd-range` improved from `83 -> 97 MiB/s`.
+
+So the standalone Firecracker/NBD sequential path appears limited mostly by per-request NBD/userspace/block-device overhead, not by the host disk. Fewer/larger requests help a bit, but the current path does not get close to host disk throughput.
+
+The next useful checks are:
+
+- measure the real Orca env again after exact-range cache reads are active in the node service
+- profile or trace NBD request size/count in the node path
+- consider batching/coalescing adjacent reads in the backend if the guest emits many small sequential requests
+- compare against a non-NBD block backend if we want to chase the remaining `file -> nbd-range` gap

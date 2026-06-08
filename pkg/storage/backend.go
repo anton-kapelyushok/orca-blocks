@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -123,14 +124,16 @@ func (b *Backend) Read(ctx context.Context, sessionID string, offset, length int
 	if err != nil {
 		return nil, err
 	}
-	out := make([]byte, 0, length)
+	out := make([]byte, length)
+	var outPos int64
 	for _, r := range ranges {
-		chunk, err := b.resolveChunk(ctx, session, r.Index)
+		partLen := int(r.ReqEnd - r.ReqStart)
+		part, err := b.resolveChunkRange(ctx, session, r.Index, int64(r.ChunkStart), partLen)
 		if err != nil {
 			return nil, err
 		}
-		end := r.ChunkStart + int(r.ReqEnd-r.ReqStart)
-		out = append(out, chunk[r.ChunkStart:end]...)
+		copy(out[outPos:outPos+int64(partLen)], part)
+		outPos += int64(partLen)
 	}
 	return out, nil
 }
@@ -337,6 +340,42 @@ func (b *Backend) resolveChunk(ctx context.Context, session *Session, index int6
 	return remote, nil
 }
 
+func (b *Backend) resolveChunkRange(ctx context.Context, session *Session, index, chunkOffset int64, length int) ([]byte, error) {
+	if _, ok := session.Dirty[index]; ok {
+		return session.readDirtyRange(index, chunkOffset, length)
+	}
+	chunkID, ok := session.BaseManifest[index]
+	if !ok {
+		session.Stats.ZeroFills++
+		return make([]byte, length), nil
+	}
+	if cached, ok, err := b.Cache.GetRange(chunkID, chunkOffset, length); err != nil {
+		return nil, err
+	} else if ok {
+		session.Stats.CacheHits++
+		return cached, nil
+	}
+
+	session.Stats.CacheMisses++
+	remote, err := b.Store.Get(ctx, chunkKey(chunkID))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			session.Stats.ZeroFills++
+			return make([]byte, length), nil
+		}
+		return nil, err
+	}
+	session.Stats.RemoteFetches++
+	remote, err = normalizeChunk(remote, session.Volume.ChunkSize)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.Cache.Put(chunkID, remote); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), remote[chunkOffset:chunkOffset+int64(length)]...), nil
+}
+
 func (b *Backend) loadManifest(ctx context.Context, key string) (Manifest, error) {
 	raw, err := b.Store.Get(ctx, key)
 	if err != nil {
@@ -387,6 +426,24 @@ func (s *Session) readDirtyChunk(index, chunkSize int64) ([]byte, error) {
 		return nil, err
 	}
 	return normalizeChunk(chunk, chunkSize)
+}
+
+func (s *Session) readDirtyRange(index, offset int64, length int) ([]byte, error) {
+	file, err := os.Open(s.dirtyPath(index))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	out := make([]byte, length)
+	n, err := file.ReadAt(out, offset)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if n < length {
+		clear(out[n:])
+	}
+	return out, nil
 }
 
 func (s *Session) writeDirtyChunk(index int64, chunk []byte) error {

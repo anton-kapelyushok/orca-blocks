@@ -1,0 +1,46 @@
+
+file-vs-nbd run 2026-06-08T00:15:38Z
+data_file=.tmp/file-vs-nbd/bench.dat
+nbd_device=/dev/nbd0
+loop_device=
+size_mb=256 random_ops=4096 io_depths=1 direct=false drop_caches=true targets=nbd
+
+target	mode	io_depth	mb_per_sec	iops	duration_ms	block_bytes	ops	bytes_read	checksum
+nbd	random	1	5	1480	2767	4096	4096	16777216	14309311491255555802
+
+local_nbd_server_stats_json
+{
+  "device": {
+    "backend_reads": 4015,
+    "backend_read_bytes": 17346560,
+    "file_read_ops": 4015,
+    "file_read_bytes": 17346560,
+    "chunk_reads": 0,
+    "read_histogram": {
+      "17-32KiB": 4,
+      "33-64KiB": 6,
+      "4KiB": 3991,
+      "5-8KiB": 2,
+      "65-128KiB": 4,
+      "9-16KiB": 8
+    }
+  },
+  "nbd": {
+    "reads": 4015,
+    "read_bytes": 17346560,
+    "writes": 0,
+    "write_bytes": 0,
+    "flushes": 0,
+    "disconnects": 1,
+    "sequential_reads": 7,
+    "non_sequential_reads": 4008,
+    "read_size_histogram": {
+      "17-32KiB": 4,
+      "33-64KiB": 6,
+      "4KiB": 3991,
+      "5-8KiB": 2,
+      "65-128KiB": 4,
+      "9-16KiB": 8
+    }
+  }
+}

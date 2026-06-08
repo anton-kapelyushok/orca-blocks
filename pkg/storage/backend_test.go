@@ -297,3 +297,63 @@ func TestCacheLRUEviction(t *testing.T) {
 		t.Fatalf("expected eviction under max size, got %+v", stats)
 	}
 }
+
+func TestCacheRangeReadAndMemoryStats(t *testing.T) {
+	t.Log("creating local cache with enough memory for one chunk")
+	cache, err := NewLocalCacheWithMemory(t.TempDir(), 1024*1024, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Put("chunk-a", []byte("abcdefghijklmnop")); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("reading a range from memory cache")
+	got, ok, err := cache.GetRange("chunk-a", 4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected range cache hit")
+	}
+	if !bytes.Equal(got, []byte("efgh")) {
+		t.Fatalf("range read = %q, want efgh", got)
+	}
+	stats, err := cache.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("memory cache bytes=%d max=%d evictions=%d", stats.MemoryBytes, stats.MemoryMaxBytes, stats.MemoryEvictions)
+	if stats.MemoryBytes != 16 || stats.MemoryMaxBytes != 16 {
+		t.Fatalf("unexpected memory stats: %+v", stats)
+	}
+}
+
+func TestCacheMemoryLRUEviction(t *testing.T) {
+	t.Log("creating local cache with memory space for only one 8-byte chunk")
+	cache, err := NewLocalCacheWithMemory(t.TempDir(), 1024*1024, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Put("a", []byte("12345678")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Put("b", []byte("abcdefgh")); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := cache.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("memory cache bytes=%d max=%d evictions=%d", stats.MemoryBytes, stats.MemoryMaxBytes, stats.MemoryEvictions)
+	if stats.MemoryBytes != 8 || stats.MemoryEvictions == 0 {
+		t.Fatalf("expected memory LRU eviction, got %+v", stats)
+	}
+	got, ok, err := cache.GetRange("b", 2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || !bytes.Equal(got, []byte("cde")) {
+		t.Fatalf("range read after memory eviction = %q ok=%v err=%v", got, ok, err)
+	}
+}

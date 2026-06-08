@@ -1,0 +1,126 @@
+Local NBD Instrumentation Results
+=================================
+
+Purpose
+-------
+
+Instrument the local NBD layer before doing more optimization.
+
+This benchmark does not use Orca control-service, Postgres, MinIO, Firecracker, or image/rootfs builds. It only measures:
+
+- `disk-bench`
+- local host file
+- local NBD server exposing the same file
+- `/dev/nbd0`
+
+Command shape:
+
+- data file: `.tmp/file-vs-nbd/bench.dat`
+- size: 256 MiB
+- sequential user block size: 1 MiB
+- random block size: 4 KiB
+- random ops: 4096
+- `io_depth=1`
+- `drop_caches=true`
+
+Timing Results
+--------------
+
+    Target      Mode         Throughput    IOPS   Duration
+    ---------   ----------   ----------   -----   --------
+    file        sequential   271 MiB/s      271     944 ms
+    nbd         sequential   100 MiB/s      100    2557 ms
+    file        random         6 MiB/s     1608    2546 ms
+    nbd         random         5 MiB/s     1451    2821 ms
+
+Separate NBD-only reruns:
+
+    Target      Mode         Throughput    IOPS   Duration
+    ---------   ----------   ----------   -----   --------
+    nbd         sequential   149 MiB/s      149    1709 ms
+    nbd         random         5 MiB/s     1475    2776 ms
+
+After adding the optional `ReadAtInto` fast path to the local NBD file device:
+
+    Target      Mode         Throughput    IOPS   Duration
+    ---------   ----------   ----------   -----   --------
+    nbd         sequential   144 MiB/s      144    1766 ms
+    nbd         random         5 MiB/s     1480    2767 ms
+
+Request Shape
+-------------
+
+Sequential-only NBD run:
+
+    Metric                         Value
+    ----------------------------   -----
+    NBD read requests              2101
+    NBD read bytes                 269,594,624
+    sequential adjacent requests   2056
+    non-sequential requests        45
+    backend file read ops          2101
+    backend file read bytes        269,594,624
+
+Sequential request-size histogram:
+
+    Size Bucket    Count
+    -----------   -----
+    65-128 KiB     2056
+    4 KiB            40
+    9-16 KiB          3
+    17-32 KiB         1
+    5-8 KiB           1
+
+Random-only NBD run:
+
+    Metric                         Value
+    ----------------------------   -----
+    NBD read requests              4015
+    NBD read bytes                 17,346,560
+    sequential adjacent requests   7
+    non-sequential requests        4008
+    backend file read ops          4015
+    backend file read bytes        17,346,560
+
+Random request-size histogram:
+
+    Size Bucket    Count
+    -----------   -----
+    4 KiB          3991
+    9-16 KiB          8
+    33-64 KiB         6
+    17-32 KiB         4
+    65-128 KiB        4
+    5-8 KiB           2
+
+Conclusion
+----------
+
+The sequential path is split below the user benchmark:
+
+- `disk-bench` asks for 256 x 1 MiB reads.
+- The NBD server receives about 2100 reads, mostly 65-128 KiB.
+
+So yes, sequential reads are already highly adjacent at the NBD layer, but the request size is much smaller than the user-level read size.
+
+The naive read-ahead experiment reduced backend call count, but did not improve throughput.
+
+The `ReadAtInto`/pooled-buffer experiment also did not materially improve local NBD throughput in this benchmark:
+
+- sequential moved from `149 MiB/s` to `144 MiB/s`
+- random moved from `1475 IOPS` to `1480 IOPS`
+
+So plain per-request Go allocation was not the dominant local NBD cost here. Based on these stats, the next local improvements should focus on:
+
+- reducing NBD protocol round trips or increasing effective request size
+- checking kernel NBD queue/request-size tunables
+- profiling syscall/write/read costs in the NBD server
+- comparing TCP NBD against a Unix-socket or in-process path if we keep this frontend
+
+Raw result files:
+
+- `docs/benchmarks/file-vs-nbd-instrumented-results.txt`
+- `docs/benchmarks/file-vs-nbd-instrumented-seq-results.txt`
+- `docs/benchmarks/file-vs-nbd-instrumented-random-results.txt`
+- `docs/benchmarks/file-vs-nbd-readatinto-seq-results.txt`
+- `docs/benchmarks/file-vs-nbd-readatinto-random-results.txt`

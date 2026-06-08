@@ -22,9 +22,10 @@ SEQ_BLOCK_BYTES = int(os.environ.get("FC_FILE_NBD_SEQ_BLOCK_BYTES", str(1024 * 1
 RANDOM_BLOCK_BYTES = int(os.environ.get("FC_FILE_NBD_RANDOM_BLOCK_BYTES", "4096"))
 IO_DEPTHS = [int(v.strip()) for v in os.environ.get("FC_FILE_NBD_IO_DEPTHS", "1").split(",") if v.strip()]
 MODES = [m.strip() for m in os.environ.get("FC_FILE_NBD_MODES", "sequential,random").split(",") if m.strip()]
-TARGETS = [t.strip() for t in os.environ.get("FC_FILE_NBD_TARGETS", "file,nbd").split(",") if t.strip()]
+TARGETS = [t.strip() for t in os.environ.get("FC_FILE_NBD_TARGETS", "file,nbd-range,nbd-chunk").split(",") if t.strip()]
 DIRECT = os.environ.get("FC_FILE_NBD_DIRECT", "false").lower() in {"1", "true", "yes", "on"}
 DROP_CACHES = os.environ.get("FC_FILE_NBD_DROP_CACHES", "true").lower() in {"1", "true", "yes", "on"}
+READ_AHEAD_KB = os.environ.get("FC_FILE_NBD_READ_AHEAD_KB", "").strip()
 TIMEOUT_SECONDS = int(os.environ.get("FC_FILE_NBD_TIMEOUT_SECONDS", "90"))
 VCPU_COUNT = int(os.environ.get("FC_FILE_NBD_VCPU_COUNT", "1"))
 MEM_SIZE_MIB = int(os.environ.get("FC_FILE_NBD_MEM_SIZE_MIB", "256"))
@@ -133,8 +134,19 @@ def detach_nbd(device):
 
 
 def start_nbd_server():
+    return start_nbd_server_mode("range")
+
+
+def start_nbd_server_mode(mode):
     proc = subprocess.Popen(
-        [str(NBD_SERVER_BIN), "-addr", NBD_ADDR, "-file", str(DATA_FILE), "-export", NBD_EXPORT],
+        [
+            str(NBD_SERVER_BIN),
+            "-addr", NBD_ADDR,
+            "-file", str(DATA_FILE),
+            "-export", NBD_EXPORT,
+            "-mode", mode,
+            "-chunk-size", str(4 * 1024 * 1024),
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -177,6 +189,8 @@ def measure_firecracker(target, drive_path, mode, io_depth):
         f"-mode {mode} -path /dev/vda -size-bytes {SIZE_MB * 1024 * 1024} "
         f"-block-bytes {block_bytes} -random-ops {RANDOM_OPS} -io-depth {io_depth}"
     )
+    if READ_AHEAD_KB:
+        boot_args += f" -read-ahead-kb {READ_AHEAD_KB}"
     if DIRECT:
         boot_args += " -direct"
 
@@ -251,7 +265,7 @@ def append_results(rows, nbd_device):
         f"firecracker-file-vs-nbd run {started}",
         f"data_file={DATA_FILE}",
         f"nbd_device={nbd_device}",
-        f"size_mb={SIZE_MB} random_ops={RANDOM_OPS} io_depths={','.join(map(str, IO_DEPTHS))} direct={str(DIRECT).lower()} drop_caches={str(DROP_CACHES).lower()}",
+        f"size_mb={SIZE_MB} random_ops={RANDOM_OPS} io_depths={','.join(map(str, IO_DEPTHS))} direct={str(DIRECT).lower()} drop_caches={str(DROP_CACHES).lower()} read_ahead_kb={READ_AHEAD_KB or 'default'}",
         "",
         "target\tmode\tio_depth\tmb_per_sec\tiops\tduration_ms\twall_ms\tblock_bytes\tops\tbytes_read\tchecksum",
     ]
@@ -270,23 +284,27 @@ def main():
 
     nbd_device = find_free_nbd()
     detach_nbd(nbd_device)
-    nbd_server = None
     rows = []
-    try:
-        if "nbd" in TARGETS:
-            nbd_server = start_nbd_server()
-            attach_nbd(nbd_device)
-        for mode in MODES:
-            for io_depth in IO_DEPTHS:
-                for target in TARGETS:
-                    drive_path = DATA_FILE if target == "file" else nbd_device
+    for mode in MODES:
+        for io_depth in IO_DEPTHS:
+            for target in TARGETS:
+                nbd_server = None
+                drive_path = DATA_FILE
+                try:
+                    if target in {"nbd", "nbd-range", "nbd-chunk"}:
+                        nbd_mode = "chunk" if target == "nbd-chunk" else "range"
+                        detach_nbd(nbd_device)
+                        nbd_server = start_nbd_server_mode(nbd_mode)
+                        attach_nbd(nbd_device)
+                        drive_path = nbd_device
                     print(f"running Firecracker target={target} mode={mode} io_depth={io_depth}", flush=True)
                     row = measure_firecracker(target, drive_path, mode, io_depth)
                     rows.append(row)
                     print(json.dumps(row, sort_keys=True), flush=True)
-    finally:
-        detach_nbd(nbd_device)
-        stop_process(nbd_server)
+                finally:
+                    if nbd_server is not None:
+                        detach_nbd(nbd_device)
+                        stop_process(nbd_server)
     append_results(rows, nbd_device)
     print(f"wrote {RESULTS_FILE}", flush=True)
 

@@ -14,6 +14,7 @@ RESULTS_FILE = Path(os.environ.get("FILE_NBD_RESULTS_FILE", "docs/benchmarks/fil
 DISK_BENCH_BIN = Path(os.environ.get("FILE_NBD_DISK_BENCH_BIN", str(WORK_DIR / "disk-bench")))
 SERVER_BIN = Path(os.environ.get("FILE_NBD_SERVER_BIN", str(WORK_DIR / "local-nbd-file-server")))
 DATA_FILE = Path(os.environ.get("FILE_NBD_DATA_FILE", str(WORK_DIR / "bench.dat")))
+STATS_FILE = Path(os.environ.get("FILE_NBD_STATS_FILE", str(WORK_DIR / "local-nbd-file-server-stats.json")))
 SIZE_MB = int(os.environ.get("FILE_NBD_SIZE_MB", "256"))
 RANDOM_OPS = int(os.environ.get("FILE_NBD_RANDOM_OPS", "16384"))
 SEQ_BLOCK_BYTES = int(os.environ.get("FILE_NBD_SEQ_BLOCK_BYTES", str(1024 * 1024)))
@@ -168,6 +169,7 @@ def main():
             "-addr", NBD_ADDR,
             "-file", str(DATA_FILE),
             "-export", EXPORT_NAME,
+            "-stats", str(STATS_FILE),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -222,6 +224,9 @@ def main():
             server_log = server.stdout.read()
             if server_log:
                 (WORK_DIR / "local-nbd-file-server.log").write_text(server_log, encoding="utf-8")
+    server_stats = ""
+    if STATS_FILE.exists():
+        server_stats = STATS_FILE.read_text(encoding="utf-8")
 
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     lines = [
@@ -238,6 +243,8 @@ def main():
         lines.append(
             "{target}\t{mode}\t{io_depth}\t{mb_per_sec}\t{iops}\t{duration_ms}\t{block_bytes}\t{ops}\t{bytes_read}\t{checksum}".format(**row)
         )
+    if server_stats:
+        lines.extend(["", "local_nbd_server_stats_json", server_stats])
     append_results(lines)
     print(f"wrote {RESULTS_FILE}", flush=True)
 

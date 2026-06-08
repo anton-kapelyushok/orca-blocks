@@ -1,0 +1,73 @@
+Orca Env IOPS After Range-Read Fix
+==================================
+
+Purpose
+-------
+
+Verify the range-read storage fix in the full Orca env path, not just in the standalone NBD model.
+
+This benchmark used the real stack:
+
+- control-service
+- node-1 and node-2 rebuilt with `LocalCache.GetRange`
+- base-image-service unchanged
+- MinIO/Postgres unchanged
+- Firecracker initramfs mode
+- 16 MiB test file
+- random reads: 512 ops
+- `io_depth=1`
+- `vcpus=1`
+- `memory_mib=512`
+
+Run Metadata
+------------
+
+- timestamp: `2026-06-07T23:50:45Z`
+- host: `178.128.247.74`
+- image: `orca-disk-bench:bench-1780876203`
+- base image id: `base-8db312f4-f5de-4bbe-b9ed-e02277a5f068`
+- env id: `env-9bc00018-6027-44cf-b890-2948a1c55eaa`
+
+After Results
+-------------
+
+Sequential read, 1 MiB blocks:
+
+    Label           Cache State             Throughput   Duration   Cache Misses   Remote Fetches
+    ------------    --------------------   -----------   --------   ------------   --------------
+    node-1-read-1   node-1 warm cache        96 MiB/s      165 ms              0                0
+    node-2-read-2   node-2 cold cache        57 MiB/s      277 ms              9                9
+    node-2-read-3   node-2 warm cache        73 MiB/s      216 ms              0                0
+
+Random read, 4 KiB blocks:
+
+    Label           Cache State             IOPS   Throughput   Duration   Cache Misses   Remote Fetches
+    ------------    --------------------   ----   ----------   --------   ------------   --------------
+    node-1-read-1   node-1 warm cache      1528    5 MiB/s      335 ms              0                0
+    node-2-read-2   node-2 warmed earlier  1574    6 MiB/s      325 ms              0                0
+    node-2-read-3   node-2 warm cache      1464    5 MiB/s      349 ms              0                0
+
+Before vs After
+---------------
+
+Previous full Orca env results from `docs/benchmarks/orca-iops-results.txt`:
+
+    Path                  Before          After              Improvement
+    ------------------    -------------   ----------------   -----------
+    node-1 sequential      21 MiB/s        96 MiB/s           4.6x
+    node-2 cold seq        19 MiB/s        57 MiB/s           3.0x
+    node-2 warm seq        20 MiB/s        73 MiB/s           3.7x
+    node-1 random         169 IOPS       1528 IOPS           9.0x
+    node-2 warm random    164-177 IOPS   1464-1574 IOPS      8.3x-9.6x
+
+Conclusion
+----------
+
+The full Orca env now behaves like the `nbd-range` model instead of the old forced-4-MiB chunk model.
+
+The range-read fix worked:
+
+- Sequential moved from about `20 MiB/s` to `73-96 MiB/s` on warm local cache.
+- Random moved from about `170 IOPS` to about `1500 IOPS` on warm local cache.
+
+The remaining gap is now the broader Firecracker/NBD path, not the 4 MiB local-cache read amplification.

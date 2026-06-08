@@ -33,6 +33,7 @@ type app struct {
 	nbdPublicAddr       string
 	nbdCommitBatch      int
 	nbdDefaultCommit    bool
+	nbdReadAheadBytes   int64
 	nbdDeviceStart      int
 	nbdDeviceCount      int
 	requireNBD          bool
@@ -126,7 +127,9 @@ func main() {
 
 	cacheMax, err := strconv.ParseInt(getenv("CACHE_MAX_BYTES", "536870912"), 10, 64)
 	must(err)
-	cache, err := storage.NewLocalCache(getenv("CACHE_DIR", "/cache"), cacheMax)
+	cacheMemoryMax, err := strconv.ParseInt(getenv("CACHE_MEMORY_MAX_BYTES", "134217728"), 10, 64)
+	must(err)
+	cache, err := storage.NewLocalCacheWithMemory(getenv("CACHE_DIR", "/cache"), cacheMax, cacheMemoryMax)
 	must(err)
 
 	a := &app{
@@ -136,6 +139,7 @@ func main() {
 		nbdPublicAddr:       getenv("NBD_PUBLIC_ADDR", ""),
 		nbdCommitBatch:      int(mustInt64(getenv("NBD_COMMIT_BATCH_CHUNKS", "16"))),
 		nbdDefaultCommit:    getenv("NBD_COMMIT_ON_DISCONNECT", "false") == "true",
+		nbdReadAheadBytes:   mustInt64(getenv("NBD_READ_AHEAD_BYTES", "0")),
 		nbdDeviceStart:      int(mustInt64(getenv("NBD_DEVICE_START", "0"))),
 		nbdDeviceCount:      int(mustInt64(getenv("NBD_DEVICE_COUNT", "16"))),
 		requireNBD:          getenv("REQUIRE_NBD_DEVICES", "false") == "true",
@@ -281,6 +285,7 @@ func (a *app) startSession(w http.ResponseWriter, r *http.Request) {
 			CommitOptions: storage.CommitOptions{
 				UploadBatchChunks: a.nbdCommitBatch,
 			},
+			ReadAheadBytes: a.nbdReadAheadBytes,
 			OnDisconnect: func() {
 				a.unregisterNBDExport(session.ID)
 			},
@@ -468,6 +473,7 @@ func (a *app) startMountedSession(session *storage.Session, format bool, fsType 
 		CommitOptions: storage.CommitOptions{
 			UploadBatchChunks: a.nbdCommitBatch,
 		},
+		ReadAheadBytes: a.nbdReadAheadBytes,
 	})
 	nbdHost, nbdPort := localNBDClientTarget(a.nbdAddr)
 	if err := runCommand("nbd-client", nbdHost, nbdPort, device, "-N", session.ID); err != nil {
@@ -680,6 +686,7 @@ func (a *app) runFirecrackerSession(ctx context.Context, session *storage.Sessio
 		CommitOptions: storage.CommitOptions{
 			UploadBatchChunks: a.nbdCommitBatch,
 		},
+		ReadAheadBytes: a.nbdReadAheadBytes,
 	})
 	record("register_nbd_export", started, nil)
 	nbdHost, nbdPort := localNBDClientTarget(a.nbdAddr)

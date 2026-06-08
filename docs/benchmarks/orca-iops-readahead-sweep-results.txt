@@ -1,0 +1,67 @@
+Orca NBD Read-Ahead Sweep
+=========================
+
+Purpose
+-------
+
+Measure whether local NBD-level sequential read-ahead improves full Orca env sequential reads.
+
+This sweep reused an existing benchmark volume instead of rebuilding the image/rootfs:
+
+- volume id: `env-vol-834b4648-55a7-4970-9917-09da294c6c8d`
+- data file: `/bench.dat`
+- benchmark binary: `/disk-bench`
+- command shape: sequential read, 16 MiB, 1 MiB user blocks, `io_depth=1`
+- only node containers were recreated to change `NBD_READ_AHEAD_BYTES`
+
+Results
+-------
+
+Sequential read, 16 MiB, 1 MiB user blocks:
+
+    NBD_READ_AHEAD_BYTES   Node/Run        Throughput   Duration   Cache Hits   Misses   Remote Fetches
+    --------------------   ------------   -----------   --------   ----------   ------   --------------
+    0                      node-1 cold      52 MiB/s      307 ms          262        9                9
+    0                      node-2 cold      60 MiB/s      264 ms          230        9                9
+    0                      node-2 warm     113 MiB/s      140 ms          265        0                0
+
+    524288                 node-1 warm      81 MiB/s      196 ms          136        0                0
+    524288                 node-2 warm      96 MiB/s      165 ms          139        0                0
+    524288                 node-2 warm      83 MiB/s      192 ms          135        0                0
+
+    1048576                node-1 warm      72 MiB/s      219 ms          114        0                0
+    1048576                node-2 warm      79 MiB/s      200 ms          117        0                0
+    1048576                node-2 warm     111 MiB/s      142 ms          114        0                0
+
+    2097152                node-1 warm      82 MiB/s      193 ms          105        0                0
+    2097152                node-2 warm      75 MiB/s      211 ms          104        0                0
+    2097152                node-2 warm      79 MiB/s      200 ms          103        0                0
+
+    4194304                node-1 warm      87 MiB/s      182 ms           90        0                0
+    4194304                node-2 warm      72 MiB/s      221 ms           90        0                0
+    4194304                node-2 warm      93 MiB/s      171 ms           91        0                0
+
+Conclusion
+----------
+
+This NBD-level read-ahead does not improve sequential throughput.
+
+It does reduce backend/cache calls:
+
+- no read-ahead warm path: about `265` cache hits
+- 4 MiB read-ahead warm path: about `90` cache hits
+
+But throughput does not improve and often regresses. The likely reason is that this implementation trades many small exact reads for larger reads plus extra memory copies/overfetch inside the NBD device. The bottleneck is not only backend call count.
+
+Default should remain:
+
+    NBD_READ_AHEAD_BYTES=0
+
+The read-ahead code remains useful as an experimental knob, but it should not be enabled by default.
+
+Next better local optimization targets:
+
+- instrument NBD protocol request size/count directly
+- reduce copies/allocation in the read path
+- try backend-level coalescing only when it can return data without extra large-copy penalties
+- investigate the Firecracker-file gap separately, because direct Firecracker file is still far below host disk

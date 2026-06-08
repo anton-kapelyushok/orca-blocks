@@ -1,0 +1,30 @@
+Storage Cache Read Granularity After Benchmark
+==============================================
+
+Run
+---
+
+- timestamp: 2026-06-08
+- command: `go test -run '^$' -bench 'BenchmarkLocalCacheReadGranularity' -benchmem ./pkg/storage`
+- host: macOS / Apple M2 Max
+- durable chunk size: 4 MiB
+- small read size: 4 KiB
+
+Results
+-------
+
+    Path                 Read Shape                  Throughput       Time/op       Alloc/op
+    ------------------   ------------------------   ------------   ----------   ------------
+    full_chunk_for_4k    Read 4 MiB, return 4 KiB     12.15 MiB/s   337078 ns    4203202 B
+    range_4k             Read exact 4 KiB            198.24 MiB/s    20662 ns       4536 B
+    memory_range_4k      Read exact 4 KiB from RAM  8174.20 MiB/s      501 ns       4096 B
+    range_1m             Read exact 1 MiB          10084.81 MiB/s   103976 ns    1049019 B
+
+Conclusion
+----------
+
+The old small-read shape was expensive because a 4 KiB guest read caused a full 4 MiB cache-file read and allocation.
+
+The storage backend now keeps the 4 MiB durable/object chunk model, but reads exact byte ranges from local cached chunk files via `LocalCache.GetRange`. Full chunks are still fetched from S3 on remote misses and retained in the node cache, but local cache hits no longer need to materialize the whole chunk for every small read.
+
+This benchmark isolates the storage code. The standalone Firecracker/NBD benchmark remains the VM-level comparison for file vs exact-range NBD vs forced 4 MiB NBD reads.

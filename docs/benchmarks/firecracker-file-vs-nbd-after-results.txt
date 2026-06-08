@@ -1,0 +1,93 @@
+Firecracker File vs NBD After Benchmark
+=======================================
+
+Purpose
+-------
+
+Re-run the standalone Firecracker block benchmark after changing the storage path to support exact range reads from local cached chunks.
+
+This benchmark does not start the Orca Compose stack. It isolates the VM block-device layer:
+
+- `file`: Firecracker block device backed directly by a host file.
+- `nbd-range`: Firecracker block device backed by NBD, with the backend reading exactly the requested byte range. This models the fixed local-cache path.
+- `nbd-chunk`: Firecracker block device backed by NBD, with the backend forced to read a full 4 MiB chunk for every request. This models the old amplification problem.
+
+Common config:
+
+- remote KVM host: `178.128.247.74`
+- `io_depth=1`
+- `direct=false`
+- `drop_caches=true`
+- sequential block size: 1 MiB
+- random block size: 4 KiB
+
+Conclusion
+----------
+
+The after path should behave much closer to `nbd-range` than `nbd-chunk`.
+
+On the 256 MiB run:
+
+- sequential: `nbd-range` is `77 MiB/s`, while forced 4 MiB chunk reads are `26 MiB/s`
+- random: `nbd-range` is `954 IOPS`, while forced 4 MiB chunk reads are `207 IOPS`
+
+So exact local range reads remove the worst part of the slowdown. NBD still costs something versus direct file, but the old Orca-shaped cliff is the 4 MiB read amplification.
+
+16 MiB Dataset
+--------------
+
+Sequential read, 1 MiB blocks:
+
+    Target       Backend behavior                 Throughput     Duration
+    ----------   ------------------------------   ------------   --------
+    file         Direct Firecracker file block     144 MiB/s      111 ms
+    nbd-range    NBD, exact range reads             67 MiB/s      236 ms
+    nbd-chunk    NBD, forced 4 MiB reads            30 MiB/s      523 ms
+
+Random read, 512 ops, 4 KiB blocks:
+
+    Target       Backend behavior                 IOPS   Throughput    Duration
+    ----------   ------------------------------   ----   -----------   --------
+    file         Direct Firecracker file block     1894   7 MiB/s        270 ms
+    nbd-range    NBD, exact range reads            1361   5 MiB/s        375 ms
+    nbd-chunk    NBD, forced 4 MiB reads            222   <1 MiB/s      2296 ms
+
+256 MiB Dataset
+---------------
+
+Sequential read, 1 MiB blocks:
+
+    Target       Backend behavior                 Throughput     Duration
+    ----------   ------------------------------   ------------   --------
+    file         Direct Firecracker file block     157 MiB/s     1621 ms
+    nbd-range    NBD, exact range reads             77 MiB/s     3285 ms
+    nbd-chunk    NBD, forced 4 MiB reads            26 MiB/s     9671 ms
+
+Random read, 4096 ops, 4 KiB blocks:
+
+    Target       Backend behavior                 IOPS   Throughput    Duration
+    ----------   ------------------------------   ----   -----------   --------
+    file         Direct Firecracker file block     1244   4 MiB/s       3291 ms
+    nbd-range    NBD, exact range reads             954   3 MiB/s       4291 ms
+    nbd-chunk    NBD, forced 4 MiB reads            207   <1 MiB/s     19784 ms
+
+Raw Run Metadata
+----------------
+
+First run:
+
+- timestamp: `2026-06-07T23:28:55Z`
+- data file: `.tmp/firecracker-file-vs-nbd/bench.dat`
+- nbd device: `/dev/nbd2`
+- dataset: `16 MiB`
+- random ops: `512`
+- checksums matched across all targets
+
+Second run:
+
+- timestamp: `2026-06-07T23:30:15Z`
+- data file: `.tmp/firecracker-file-vs-nbd/bench.dat`
+- nbd device: `/dev/nbd2`
+- dataset: `256 MiB`
+- random ops: `4096`
+- checksums matched across all targets

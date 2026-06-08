@@ -36,6 +36,23 @@ func (d *memDevice) Disconnect(context.Context) error {
 	return nil
 }
 
+type intoMemDevice struct {
+	memDevice
+	readAtCalls     int
+	readAtIntoCalls int
+}
+
+func (d *intoMemDevice) ReadAt(ctx context.Context, offset, length int64) ([]byte, error) {
+	d.readAtCalls++
+	return d.memDevice.ReadAt(ctx, offset, length)
+}
+
+func (d *intoMemDevice) ReadAtInto(_ context.Context, offset int64, dst []byte) (int, error) {
+	d.readAtIntoCalls++
+	copy(dst, d.data[offset:offset+int64(len(dst))])
+	return len(dst), nil
+}
+
 func TestServerReadWriteFlushDisconnect(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
 	defer clientConn.Close()
@@ -74,6 +91,38 @@ func TestServerReadWriteFlushDisconnect(t *testing.T) {
 	}
 	if device.disconnect != 1 {
 		t.Fatalf("disconnects = %d, want 1", device.disconnect)
+	}
+}
+
+func TestServerUsesReadAtIntoWhenAvailable(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+
+	device := &intoMemDevice{memDevice: memDevice{data: []byte("abcdefghijklmnopqrstuvwxyz")}}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- (&Server{Device: device}).Handle(context.Background(), serverConn)
+	}()
+
+	t.Log("performing NBD handshake")
+	handshake(t, clientConn, uint64(len(device.data)))
+
+	t.Log("reading through NBD; server should use ReadAtInto")
+	writeRequest(t, clientConn, 1, cmdRead, 4, make([]byte, 5))
+	got := readReply(t, clientConn, 1, make([]byte, 5))
+	if !bytes.Equal(got, []byte("efghi")) {
+		t.Fatalf("read = %q, want efghi", got)
+	}
+	if device.readAtIntoCalls != 1 {
+		t.Fatalf("ReadAtInto calls = %d, want 1", device.readAtIntoCalls)
+	}
+	if device.readAtCalls != 0 {
+		t.Fatalf("ReadAt fallback calls = %d, want 0", device.readAtCalls)
+	}
+
+	writeRequest(t, clientConn, 2, cmdDisconnect, 0, nil)
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
 	}
 }
 
