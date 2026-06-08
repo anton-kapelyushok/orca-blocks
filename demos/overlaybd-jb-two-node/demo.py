@@ -127,6 +127,12 @@ def interpolate_command(command: str, env: dict[str, str]) -> str:
         "WORK": f"/root/orca-overlaybd-demo-{env['RUN_ID']}",
         "COMMIT_DIR": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit",
         "ENV_FILE": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/mutable.env",
+        "DIFF_TAR": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-upperdir-diff.tar",
+        "APPLY_DATA": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-writable-data",
+        "APPLY_INDEX": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-writable-index",
+        "APPLY_CONFIG": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-apply-config.v1.json",
+        "APPLY_RESULT": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-apply-result.log",
+        "COMMIT_OBD": f"/root/orca-overlaybd-demo-{env['RUN_ID']}/commit/demo-touch-commit.obd",
         "REGISTRY_URL": f"http://{env['REGISTRY_HOST']}",
         "BASE_REF": f"{env['REGISTRY_HOST']}/{env['REPO']}:{env['BASE_TAG']}",
         "DERIVED_REF": f"{env['REGISTRY_HOST']}/{env['REPO']}:{env['DERIVED_TAG']}",
@@ -321,7 +327,7 @@ def main() -> int:
             ],
         ),
         ScenarioStep(
-            "touch a file in a mutable node1 OverlayBD run",
+            "touch a file in a node1 overlayfs upperdir run",
             "node1 touch file",
             [
                 RemoteStep(
@@ -336,7 +342,7 @@ def main() -> int:
             ],
         ),
         ScenarioStep(
-            "commit node1 writable OverlayBD snapshot and push derived image",
+            "export node1 overlay upperdir and push derived image",
             "commit derived image",
             [RemoteStep("node1", config.node1, "commit-snapshot.sh")],
         ),

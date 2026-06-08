@@ -4,8 +4,8 @@ Interactive demo for the single-tenant Docker/Sysbox/OverlayBD path.
 
 The local Python runner only orchestrates SSH, confirmations, and timing tables.
 It prints the SSH/script invocation for each step. The remote scripts print the
-actual main commands, such as `ctr rpull`, `ctr run`, `tasks exec`,
-`overlaybd-commit`, and registry `curl` uploads, immediately before they run.
+actual main commands, such as `ctr rpull`, `ctr run`, upperdir export, and
+registry `curl` uploads, immediately before they run.
 
 ## Scenario
 
@@ -16,10 +16,12 @@ actual main commands, such as `ctr rpull`, `ctr run`, `tasks exec`,
    warming node2 by executing the environment.
 4. Run the base JetBrains Workspace image on node1 again until the Join URL,
    showing the warm-node timing after Step 2 populated local caches.
-5. Start the base image on node1 only long enough to create a writable
-   OverlayBD snapshot, touch a file, and stop it. The nodes are kept in
-   OverlayBD `rwMode=dev`, so every run has native writable block state.
-6. Commit the node1 writable OverlayBD block layer and push a derived image.
+5. Start the base image on node1 in OverlayBD `rwMode=overlayfs`, touch a file,
+   stop the task, and keep the container snapshot so the overlay upperdir and
+   base OverlayBD config can be captured.
+6. Export the node1 overlay upperdir as an OCI diff tar, apply that diff into a
+   fresh OverlayBD writable pair, commit the pair to a lazy `.obd` layer, and
+   push a derived image.
 7. Run the derived image on node2 until the Join URL.
 8. Verify the touched file exists in the derived image on node2.
 
@@ -27,9 +29,9 @@ The cleanup step keeps durable state intact: registry blobs and MySQL metadata
 are not deleted. It clears local OverlayBD image refs, snapshots, content, and
 cache directories so the demo warms the nodes through the first real runs.
 
-The demo expects OverlayBD `rwMode=dev`. Cleanup enforces it on both nodes.
-The setup scripts now default to that mode as well; pass
-`OVERLAYBD_RW_MODE=overlayfs` only for comparison experiments.
+The demo expects OverlayBD `rwMode=overlayfs`. Cleanup enforces it on both
+nodes. This keeps Sysbox startup on the fast overlayfs path while preserving
+container writes through the overlay upperdir.
 
 ## Run
 
@@ -59,7 +61,8 @@ python3 demos/overlaybd-jb-two-node/demo.py --yes --dry-run
 - `remote/cleanup.sh`: clears local demo state and OverlayBD caches.
 - `remote/run-workspace-until-join.sh`: runs an image until the Join URL.
 - `remote/mutable-touch.sh`: starts the base image, touches the demo file, stops
-  it, and leaves the writable OverlayBD block files for commit.
-- `remote/commit-snapshot.sh`: commits the writable OverlayBD block layer and
-  pushes a derived manifest.
+  it, and records the container overlay upperdir plus the base OverlayBD config.
+- `remote/commit-snapshot.sh`: exports the overlay upperdir as an OCI diff tar,
+  converts it into an OverlayBD layer with `overlaybd-apply` and
+  `overlaybd-commit`, then pushes a derived manifest.
 - `remote/verify-touch.sh`: runs the derived image and verifies the touched file.

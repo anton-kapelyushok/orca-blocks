@@ -49,11 +49,11 @@ if [[ -n "$remaining_tasks" || -n "$remaining_containers" ]]; then
   exit 1
 fi
 
-if [[ "$(jq -r .rwMode "$CONFIG")" != "dev" ]]; then
-  echo "Executing local: jq '.rwMode=\"dev\"' $CONFIG"
-# DEMO-CMD: jq '.rwMode="dev" | .mirrorRegistry = ...' "$CONFIG" >"$tmp"
+if [[ "$(jq -r .rwMode "$CONFIG")" != "overlayfs" ]]; then
+  echo "Executing local: jq '.rwMode=\"overlayfs\"' $CONFIG"
+# DEMO-CMD: jq '.rwMode="overlayfs" | .mirrorRegistry = ...' "$CONFIG" >"$tmp"
   tmp="$(mktemp)"
-  jq '.rwMode="dev" | .mirrorRegistry = (((.mirrorRegistry // []) + [{"host": env.REGISTRY_HOST, "insecure": true}, {"host": env.NODE2_REGISTRY_HOST, "insecure": true}]) | unique_by(.host))' "$CONFIG" >"$tmp"
+  jq '.rwMode="overlayfs" | .mirrorRegistry = (((.mirrorRegistry // []) + [{"host": env.REGISTRY_HOST, "insecure": true}, {"host": env.NODE2_REGISTRY_HOST, "insecure": true}]) | unique_by(.host))' "$CONFIG" >"$tmp"
   mv "$tmp" "$CONFIG"
   echo "Executing local: systemctl restart overlaybd-snapshotter"
 # DEMO-CMD: systemctl restart overlaybd-snapshotter

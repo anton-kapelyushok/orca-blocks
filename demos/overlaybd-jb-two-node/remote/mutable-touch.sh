@@ -14,9 +14,9 @@ echo "image=$IMAGE_REF"
 echo "container=$NAME"
 echo "touch_path=$TOUCH_PATH"
 
-echo "Executing local: assert OverlayBD rwMode=dev"
-if [[ "$(jq -r .rwMode "$CONFIG")" != "dev" ]]; then
-  echo "Expected rwMode=dev. Run demo cleanup first."
+echo "Executing local: assert OverlayBD rwMode=overlayfs"
+if [[ "$(jq -r .rwMode "$CONFIG")" != "overlayfs" ]]; then
+  echo "Expected rwMode=overlayfs. Run demo cleanup first."
   cat "$CONFIG"
   exit 1
 fi
@@ -91,16 +91,51 @@ if [[ -z "$task_ready_ms" || -z "$touch_ms" ]]; then
   exit 1
 fi
 
-echo "Executing local: find writable OverlayBD config"
-# DEMO-CMD: grep -Rsl '"upper"' "$SNAPSHOT_ROOT/snapshots" | xargs -r ls -t | head -1
-CONFIG_PATH="$(grep -Rsl '"upper"' "$SNAPSHOT_ROOT/snapshots" | xargs -r ls -t | head -1)"
-WD="$(jq -r '.upper.data' "$CONFIG_PATH")"
-WI="$(jq -r '.upper.index' "$CONFIG_PATH")"
-echo "config_path=$CONFIG_PATH"
-echo "writable_data=$WD"
-echo "writable_index=$WI"
+echo "Executing local: find task pid and containerd overlay upperdir"
+# DEMO-CMD: $CTR -n "$NS" tasks ls | awk -v name="$NAME" '$1==name {print $2}'; $CTR -n "$NS" snapshots --snapshotter overlaybd mounts /tmp/probe "$NAME"
+PID="$($CTR -n "$NS" tasks ls | awk -v name="$NAME" '$1==name {print $2}')"
+if [[ -z "$PID" ]]; then
+  echo "Could not find task pid for $NAME"
+  exit 1
+fi
+MOUNT_CMD="$($CTR -n "$NS" snapshots --snapshotter overlaybd mounts /tmp/orca-demo-probe "$NAME")"
+UPPERDIR="$(printf '%s' "$MOUNT_CMD" | sed -n 's/.*upperdir=\([^,]*\).*/\1/p')"
+WORKDIR="$(printf '%s' "$MOUNT_CMD" | sed -n 's/.*workdir=\([^,]*\).*/\1/p')"
+LOWERDIR="$(printf '%s' "$MOUNT_CMD" | sed -n 's/.*lowerdir=\([^,]*\).*/\1/p')"
+if [[ -z "$UPPERDIR" || ! -d "$UPPERDIR" ]]; then
+  echo "Could not resolve overlay upperdir from snapshot mount command:"
+  echo "$MOUNT_CMD"
+  exit 1
+fi
+SNAPSHOT_DIR="$(dirname "$UPPERDIR")"
+OBD_CONFIG_PATH="$SNAPSHOT_DIR/block/config.v1.json"
+if [[ ! -f "$OBD_CONFIG_PATH" ]]; then
+  TOP_LOWERDIR="${LOWERDIR%%:*}"
+  if [[ "$TOP_LOWERDIR" == */block/mountpoint ]]; then
+    OBD_CONFIG_PATH="${TOP_LOWERDIR%/mountpoint}/config.v1.json"
+  elif [[ "$TOP_LOWERDIR" == */fs ]]; then
+    OBD_CONFIG_PATH="$(dirname "$TOP_LOWERDIR")/block/config.v1.json"
+  fi
+  if [[ ! -f "$OBD_CONFIG_PATH" ]]; then
+    echo "Could not find OverlayBD image config for active snapshot or top lowerdir:"
+    echo "active_snapshot_config=$SNAPSHOT_DIR/block/config.v1.json"
+    echo "top_lowerdir=$TOP_LOWERDIR"
+    echo "lowerdir_config=$OBD_CONFIG_PATH"
+    exit 1
+  fi
+fi
+UID_MAP="$(tr '\n' ';' <"/proc/$PID/uid_map")"
+GID_MAP="$(tr '\n' ';' <"/proc/$PID/gid_map")"
+echo "pid=$PID"
+echo "mount_command=$MOUNT_CMD"
+echo "upperdir=$UPPERDIR"
+echo "workdir=$WORKDIR"
+echo "lowerdir=$LOWERDIR"
+echo "overlaybd_config=$OBD_CONFIG_PATH"
+echo "uid_map=$UID_MAP"
+echo "gid_map=$GID_MAP"
 
-echo "Executing local: stop task but keep container/snapshot for overlaybd-commit"
+echo "Executing local: stop task but keep container/snapshot for upperdir diff export"
 # DEMO-CMD: $CTR -n "$NS" tasks kill -s SIGTERM "$NAME"; $CTR -n "$NS" tasks rm "$NAME"
 touch_end_ms=$(date +%s%3N)
 $CTR -n "$NS" tasks kill -s SIGTERM "$NAME" || true
@@ -114,9 +149,12 @@ stop_ms=$((stop_end_ms - touch_end_ms))
 cat >"$ENV_FILE" <<EOF_INNER
 NAME=$NAME
 IMAGE_REF=$IMAGE_REF
-CONFIG_PATH=$CONFIG_PATH
-WD=$WD
-WI=$WI
+UPPERDIR=$UPPERDIR
+WORKDIR=$WORKDIR
+LOWERDIR=$LOWERDIR
+OBD_CONFIG_PATH=$OBD_CONFIG_PATH
+UID_MAP='$UID_MAP'
+GID_MAP='$GID_MAP'
 TOUCH_PATH=$TOUCH_PATH
 LOG=$LOG
 EOF_INNER

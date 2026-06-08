@@ -15,7 +15,7 @@ OVERLAYBD_DEB="${OVERLAYBD_DEB:-overlaybd-1.0.17-20260605.afa06c7.ubuntu1.22.04.
 SNAPSHOTTER_VERSION="${SNAPSHOTTER_VERSION:-v1.4.3}"
 SNAPSHOTTER_DEB="${SNAPSHOTTER_DEB:-overlaybd-snapshotter_1.4.3-20260330130113.43c3295_amd64.deb}"
 WORK_DIR="${WORK_DIR:-/root/orca-blocks/.tmp/overlaybd-docker-install}"
-OVERLAYBD_RW_MODE="${OVERLAYBD_RW_MODE:-dev}"
+OVERLAYBD_RW_MODE="${OVERLAYBD_RW_MODE:-overlayfs}"
 
 log() {
   printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"
@@ -53,7 +53,7 @@ install_overlaybd() {
 write_configs() {
   mkdir -p /etc/docker /etc/containerd
 
-  cat >/etc/overlaybd-snapshotter/config.json <<'JSON'
+  cat >/etc/overlaybd-snapshotter/config.json <<JSON
 {
     "root": "/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd",
     "address": "/run/overlaybd-snapshotter/overlaybd.sock",
