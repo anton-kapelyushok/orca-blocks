@@ -1,0 +1,86 @@
+# Docker Layer Resume Experiment
+
+Run: 2026-06-08T09:13Z
+Host: `root@178.128.247.74`
+
+Purpose:
+
+Test the alternative product path where nodes run Docker/containerd directly, base images are preloaded on each node, and env resume across nodes fetches only committed layer deltas from a registry.
+
+Script:
+
+```text
+scripts/measure-docker-layer-resume.py
+```
+
+## Alpine Sanity Run
+
+Config:
+
+```text
+IMAGE=alpine:3.22
+START_COMMAND='echo ORCA_LAYER_READY'
+MARKER=ORCA_LAYER_READY
+proof_path=/tmp/orca-proof
+registry=127.0.0.1:15000
+```
+
+Flow:
+
+```text
+1. Start local registry.
+2. Start two isolated temporary containerd+dockerd daemons as node-1 and node-2.
+3. Preload alpine:3.22 into both nodes.
+4. Run base image on node-1 and node-2.
+5. On node-1, create a container that writes /tmp/orca-proof.
+6. docker commit that container as 127.0.0.1:15000/orca-env:<run>.
+7. docker push committed env image to registry.
+8. On node-2, docker run committed env image and read /tmp/orca-proof.
+```
+
+Results:
+
+```text
+node1_preload_ms           2025
+node2_preload_ms           1538
+node1_base_start_ms         875
+node2_base_start_ms         799
+commit_ms                 1350
+push_ms                    333
+node2_resume_changed_ms   1183
+proof_ok                  true
+```
+
+Timestamped phases:
+
+```text
+node1_preload_base              2025ms  2026-06-08T09:13:32.879Z -> 2026-06-08T09:13:34.904Z
+node2_preload_base              1538ms  2026-06-08T09:13:34.904Z -> 2026-06-08T09:13:36.442Z
+node-1_base-start                875ms  2026-06-08T09:13:36.443Z -> 2026-06-08T09:13:37.318Z
+node-2_base-start                799ms  2026-06-08T09:13:37.414Z -> 2026-06-08T09:13:38.213Z
+node1_commit_env_delta          1350ms  2026-06-08T09:13:38.337Z -> 2026-06-08T09:13:39.688Z
+node1_push_env_image             333ms  2026-06-08T09:13:39.688Z -> 2026-06-08T09:13:40.021Z
+node2_resume_changed_image      1183ms  2026-06-08T09:13:40.022Z -> 2026-06-08T09:13:41.205Z
+```
+
+Registry push tail:
+
+```text
+The push refers to repository [127.0.0.1:15000/orca-env]
+6a68b699c697: Pushed
+84f5eff04246: Pushed
+20260608t091327z: digest: sha256:b171c6ac1d08f2da2548e59ed7c01c198c8abcd6ec31cb3d7047f2f39ce82e8d size: 744
+```
+
+Takeaway:
+
+The Docker-layer path works for the core lazy resume shape:
+
+```text
+base image local on both nodes
+node-1 writes env delta
+node-1 commits and pushes env image
+node-2 runs env image and fetches only the committed delta
+```
+
+For Alpine, the end-to-end node-2 changed-image run was `1.183s`, including pulling the env image from the local registry and reading the proof file.

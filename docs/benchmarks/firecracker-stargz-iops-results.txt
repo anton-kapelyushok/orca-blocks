@@ -1,0 +1,64 @@
+firecracker-stargz-iops benchmark
+=================================
+
+Host: root@178.128.247.74
+Date: 2026-06-08
+Run: 20260608T095453Z
+
+Question
+--------
+
+Measure both runtimes assuming the container daemon is already ready:
+
+- first user output
+- sequential read timing + MiB/s + IOPS
+- random read timing + MiB/s + IOPS
+
+For Firecracker, each row is a separate fresh VM boot. The measured `Wall` time starts inside
+the guest after containerd and the stargz snapshotter are ready. Each Firecracker row performs
+its own `ctr-remote images rpull --snapshotter stargz --plain-http` before the container action,
+so sequential and random do not warm each other.
+
+For Docker, dockerd is assumed ready. Each Docker row is a separate `docker run`.
+
+Configuration
+-------------
+
+base_image=alpine:3.22
+size_mb=256
+random_ops=65536
+io_depth=1
+mem_mib=3072
+vcpu=1
+stable_tag=size256m-rand65536-qd1-85214d011d9b
+
+Image Preparation
+-----------------
+
+The normal and eStargz image tags were already present in the node-local registry.
+
+Phase                              Time
+--------------------------------  -------
+build_and_push_benchmark_image       19 ms
+optimize_esgz_image                  18 ms
+
+Results
+-------
+
+Runtime              Operation           Wall        Bench       Throughput      IOPS  Notes
+-------------------  ------------------  --------  -----------  ----------  --------  --------------------------------------------
+docker               first_user_output    1037 ms                                     dockerd ready
+docker               sequential_read      1364 ms       429 ms   595 MiB/s       595  dockerd ready
+docker               random_read         24560 ms     23509 ms    10 MiB/s      2787  dockerd ready
+firecracker-stargz   first_user_output   17310 ms                                     containerd ready; includes stargz rpull (16290 ms)
+firecracker-stargz   sequential_read     17150 ms       107 ms  2384 MiB/s      2384  containerd ready; includes stargz rpull (16190 ms)
+firecracker-stargz   random_read         17140 ms       319 ms   800 MiB/s    204828  containerd ready; includes stargz rpull (15980 ms)
+
+Interpretation
+--------------
+
+- The primary product number here is `Wall`.
+- Firecracker + stargz is dominated by `rpull`, about 16.0-16.3s per fresh VM operation.
+- The in-container read benchmark is fast once the lazy image is mounted/materialized, but that is secondary.
+- Docker first output is much faster on this setup, while Docker random read from the normal image is much slower than the cached stargz read path.
+- Next useful split: break Firecracker `rpull` into manifest/config/layer metadata fetch and actual on-demand data fetch, because `rpull` is currently the main wall-time cost.

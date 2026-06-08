@@ -1,0 +1,95 @@
+# Stargz Lazy Layer Resume Experiment
+
+Run: 2026-06-08T09:19Z
+Host: `root@178.128.247.74`
+
+Purpose:
+
+Test the easiest lazy container image path for Orca-style env resume:
+
+```text
+registry stores eStargz-converted images
+node-2 uses containerd-stargz-grpc
+node-2 pulls only lazy metadata first
+file content is fetched by stargz snapshotter on access
+```
+
+Script:
+
+```text
+scripts/measure-stargz-layer-resume.py
+```
+
+Tools:
+
+```text
+containerd-stargz-grpc / ctr-remote v0.18.2
+containerd 2.2.1
+registry:2 on 127.0.0.1:15001
+```
+
+## Alpine Run
+
+Config:
+
+```text
+IMAGE=alpine:3.22
+START_COMMAND='echo ORCA_STARGZ_READY'
+MARKER=ORCA_STARGZ_READY
+proof_path=/tmp/orca-proof
+```
+
+Flow:
+
+```text
+1. Start local registry.
+2. Seed normal base image and normal changed env image with Docker.
+3. Convert base and env images to eStargz with ctr-remote images optimize.
+4. Start isolated node-2 containerd with containerd-stargz-grpc snapshotter.
+5. node-2 rpull base eStargz image.
+6. node-2 run base image and wait for marker.
+7. node-2 rpull changed env eStargz image.
+8. node-2 run changed env image and read /tmp/orca-proof.
+```
+
+Timestamped phases:
+
+```text
+seed_normal_images              3697ms  2026-06-08T09:19:46.665Z -> 2026-06-08T09:19:50.362Z
+optimize_base_esgz              4442ms  2026-06-08T09:19:50.362Z -> 2026-06-08T09:19:54.804Z
+optimize_env_esgz               4343ms  2026-06-08T09:19:54.804Z -> 2026-06-08T09:19:59.147Z
+node2_rpull_base_esgz            635ms  2026-06-08T09:19:59.147Z -> 2026-06-08T09:19:59.782Z
+node2_base_start_stargz          884ms  2026-06-08T09:19:59.782Z -> 2026-06-08T09:20:00.665Z
+node2_rpull_env_esgz             870ms  2026-06-08T09:20:00.666Z -> 2026-06-08T09:20:01.536Z
+node2_resume_changed_stargz      618ms  2026-06-08T09:20:01.536Z -> 2026-06-08T09:20:02.154Z
+```
+
+Result:
+
+```text
+proof_ok=true
+base_esgz=127.0.0.1:15001/orca-base-esgz:20260608t091942z
+env_esgz=127.0.0.1:15001/orca-env-esgz:20260608t091942z
+```
+
+Takeaway:
+
+The stargz path works for the Alpine lazy-pull shape:
+
+```text
+node-2 lazy-pulls base metadata
+node-2 starts the base container
+node-2 lazy-pulls changed env metadata
+node-2 starts changed env container and reads the committed proof file
+```
+
+For this tiny image, the lazy layer machinery is fast enough to be plausible:
+
+```text
+base rpull metadata:      635ms
+base run to marker:       884ms
+env rpull metadata:       870ms
+env run proof command:    618ms
+```
+
+This does not yet measure a large image like the JetBrains workspace image, but it proves the integration shape with a real registry, eStargz conversion, and `containerd-stargz-grpc`.

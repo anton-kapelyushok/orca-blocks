@@ -1,0 +1,55 @@
+cold-image startup benchmark
+============================
+
+date=2026-06-08T10:28:18.792Z
+normal_image_direct=127.0.0.1:15110/orca-cold-image:cold-blob-256
+normal_image_proxy=127.0.0.1:15111/orca-cold-image:cold-blob-256
+lazy_image_direct=127.0.0.1:15110/orca-cold-image-esgz:cold-blob-256
+lazy_image_proxy=127.0.0.1:15111/orca-cold-image-esgz:cold-blob-256
+blob_mb=256
+rootfs_size_mb=1024
+toxiproxy_latency_ms=20
+toxiproxy_bandwidth_kbps=10000
+
+Summary
+-------
+
+Path                 Operation              Time
+-------------------  --------------------  --------
+Orca VM+NBD          buildImage              70520 ms
+Orca VM+NBD          startEnv                 8652 ms
+Orca VM+NBD          first_user_output        6466 ms
+No VM lazy layers    rpull                     990 ms
+No VM lazy layers    run                       854 ms
+No VM lazy layers    rpull+run                1844 ms
+
+Orca buildImage steps
+---------------------
+
+Step                           Time
+-----------------------------  --------
+prepare_workdir                      0 ms
+pull_image                       30199 ms
+inspect_image                       66 ms
+write_image_inspect                  0 ms
+create_container                  1056 ms
+export_rootfs_tar                 1786 ms
+remove_container                   490 ms
+create_rootfs_file                   0 ms
+mkfs_ext4                           76 ms
+prepare_mount_dir                    0 ms
+mount_rootfs                        17 ms
+unpack_rootfs_tar                  679 ms
+prepare_guest_dirs                   0 ms
+write_guest_image_inspect            0 ms
+write_guest_image_ref                0 ms
+write_guest_rootfs_meta              0 ms
+unmount_rootfs                    1480 ms
+create_volume                        9 ms
+import_rootfs_snapshot           34524 ms
+record_base_image                   18 ms
+
+Details
+-------
+
+{"lazy_no_vm": {"output": "ORCA_COLD_READY", "pull_run_wall_ms": 1844, "rpull_ms": 990, "run_ms": 854}, "orca": {"base_image_id": "base-43c1c721-eab0-4658-b5c4-c9757961915a", "build_duration_ms": 70411, "build_timings": [{"duration_ms": 0, "name": "prepare_workdir", "started_at": "2026-06-08T10:26:56.633745841Z", "status": "ok"}, {"duration_ms": 30199, "name": "pull_image", "started_at": "2026-06-08T10:26:56.633924488Z", "status": "ok"}, {"duration_ms": 66, "name": "inspect_image", "started_at": "2026-06-08T10:27:26.833013122Z", "status": "ok"}, {"duration_ms": 0, "name": "write_image_inspect", "started_at": "2026-06-08T10:27:26.899954135Z", "status": "ok"}, {"duration_ms": 1056, "name": "create_container", "started_at": "2026-06-08T10:27:26.901311814Z", "status": "ok"}, {"duration_ms": 1786, "name": "export_rootfs_tar", "started_at": "2026-06-08T10:27:27.958176163Z", "status": "ok"}, {"duration_ms": 490, "name": "remove_container", "started_at": "2026-06-08T10:27:29.745136543Z", "status": "ok"}, {"duration_ms": 0, "name": "create_rootfs_file", "started_at": "2026-06-08T10:27:30.235505374Z", "status": "ok"}, {"duration_ms": 76, "name": "mkfs_ext4", "started_at": "2026-06-08T10:27:30.235728488Z", "status": "ok"}, {"duration_ms": 0, "name": "prepare_mount_dir", "started_at": "2026-06-08T10:27:30.31263758Z", "status": "ok"}, {"duration_ms": 17, "name": "mount_rootfs", "started_at": "2026-06-08T10:27:30.313391386Z", "status": "ok"}, {"duration_ms": 679, "name": "unpack_rootfs_tar", "started_at": "2026-06-08T10:27:30.330693176Z", "status": "ok"}, {"duration_ms": 0, "name": "prepare_guest_dirs", "started_at": "2026-06-08T10:27:31.009842362Z", "status": "ok"}, {"duration_ms": 0, "name": "write_guest_image_inspect", "started_at": "2026-06-08T10:27:31.010000086Z", "status": "ok"}, {"duration_ms": 0, "name": "write_guest_image_ref", "started_at": "2026-06-08T10:27:31.010748868Z", "status": "ok"}, {"duration_ms": 0, "name": "write_guest_rootfs_meta", "started_at": "2026-06-08T10:27:31.010878456Z", "status": "ok"}, {"duration_ms": 1480, "name": "unmount_rootfs", "started_at": "2026-06-08T10:27:31.011022727Z", "status": "ok"}, {"duration_ms": 9, "name": "create_volume", "started_at": "2026-06-08T10:27:32.491595078Z", "status": "ok"}, {"duration_ms": 34524, "name": "import_rootfs_snapshot", "started_at": "2026-06-08T10:27:32.501139789Z", "status": "ok"}, {"duration_ms": 18, "name": "record_base_image", "started_at": "2026-06-08T10:28:07.026115832Z", "status": "ok"}], "build_wall_ms": 70520, "env_id": "env-0228ca33-c495-488c-a4dc-5cbc9a82679b", "request_to_first_user_output_ms": 6466, "rootfs_size_bytes": 1073741824, "run_firecracker_ms": 2249, "session_id": "cc216b6a-5c14-4519-9a94-bf33cfa3b12c", "start_wall_ms": 8652}}
