@@ -22,6 +22,9 @@ SIZE_MB = int(os.environ.get("DISK_BENCH_SIZE_MB", "256"))
 WAIT_SECONDS = int(os.environ.get("WAIT_SECONDS", "120"))
 SYSBOX_IMAGE = os.environ.get("SYSBOX_IMAGE", "docker:29-dind")
 FORCE_IMAGE = os.environ.get("FORCE_IMAGE", "").lower() in {"1", "true", "yes", "on"}
+STARGZ_DOC_CONFIG = os.environ.get("STARGZ_DOC_CONFIG", "").lower() in {"1", "true", "yes", "on"}
+OPTIMIZE_ENTRYPOINT_JSON = os.environ.get("OPTIMIZE_ENTRYPOINT_JSON", "")
+OPTIMIZE_ARGS_JSON = os.environ.get("OPTIMIZE_ARGS_JSON", "")
 
 
 def q(value):
@@ -123,7 +126,12 @@ def optimize_and_push(work, source, target):
     if not FORCE_IMAGE and registry_has_image(target):
         return False
     host_containerd_ctr(work, "images pull --plain-http %s" % q(source))
-    host_containerd_ctr(work, "images optimize --oci %s %s" % (q(source), q(target)))
+    optimize_flags = ["--oci"]
+    if OPTIMIZE_ENTRYPOINT_JSON:
+        optimize_flags.append("--entrypoint=%s" % q(OPTIMIZE_ENTRYPOINT_JSON))
+    if OPTIMIZE_ARGS_JSON:
+        optimize_flags.append("--args=%s" % q(OPTIMIZE_ARGS_JSON))
+    host_containerd_ctr(work, "images optimize %s %s %s" % (" ".join(optimize_flags), q(source), q(target)))
     host_containerd_ctr(work, "images push --plain-http %s" % q(target))
     return True
 
@@ -182,7 +190,30 @@ def exec_in(name, cmd, check=True):
 def wait_for_online(name):
     online_start = now_ms()
     exec_in(name, "mkdir -p /run/containerd /run/containerd-stargz-grpc /var/lib/containerd /var/lib/containerd-stargz-grpc /etc/containerd")
-    exec_in(name, "cat >/etc/containerd/config.toml <<'EOF'\nversion = 2\n[proxy_plugins]\n  [proxy_plugins.stargz]\n    type = \"snapshot\"\n    address = \"/run/containerd-stargz-grpc/containerd-stargz-grpc.sock\"\nEOF")
+    if STARGZ_DOC_CONFIG:
+        config = """cat >/etc/containerd/config.toml <<'EOF'
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "stargz"
+  disable_snapshot_annotations = false
+
+[proxy_plugins]
+  [proxy_plugins.stargz]
+    type = "snapshot"
+    address = "/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
+  [proxy_plugins.stargz.exports]
+    root = "/var/lib/containerd-stargz-grpc/"
+EOF"""
+    else:
+        config = """cat >/etc/containerd/config.toml <<'EOF'
+version = 2
+[proxy_plugins]
+  [proxy_plugins.stargz]
+    type = "snapshot"
+    address = "/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
+EOF"""
+    exec_in(name, config)
     exec_in(name, "/tools/containerd-stargz-grpc -address /run/containerd-stargz-grpc/containerd-stargz-grpc.sock -root /var/lib/containerd-stargz-grpc -log-level warn >/tmp/stargz.log 2>&1 &")
     exec_in(name, "containerd --address /run/containerd/containerd.sock --config /etc/containerd/config.toml --log-level warn >/tmp/containerd.log 2>&1 &")
     deadline = time.time() + WAIT_SECONDS
@@ -318,6 +349,9 @@ def main():
         "optimized_actual": optimized_actual,
         "built_base": built_base,
         "optimized_base": optimized_base,
+        "stargz_doc_config": STARGZ_DOC_CONFIG,
+        "optimize_entrypoint_json": OPTIMIZE_ENTRYPOINT_JSON,
+        "optimize_args_json": OPTIMIZE_ARGS_JSON,
         "rows": rows,
     }
     write_results(started, rows, summary)

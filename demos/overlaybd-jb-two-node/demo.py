@@ -255,7 +255,7 @@ def parse_args() -> Config:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     parser = argparse.ArgumentParser(description="Master/slave OverlayBD JB Workspace demo")
     parser.add_argument("--master", default="root@178.128.247.74")
-    parser.add_argument("--slave", default="anton.kapeliushok@104.155.88.61")
+    parser.add_argument("--slave", default="anton.kapeliushok@34.76.115.252")
     parser.add_argument("--registry", default="178.128.247.74:5000")
     parser.add_argument("--master-registry", default="127.0.0.1:5000")
     parser.add_argument("--repo", default="orca/overlaybd-jb-real")
