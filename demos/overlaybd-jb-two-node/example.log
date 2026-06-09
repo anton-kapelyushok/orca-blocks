@@ -211,7 +211,7 @@ Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/
 Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
 Dock HTTP Api listening to 127.0.0.1:36479
 [20260609 09:22:53.557 WARN  56:WS:jsia26r4ro79cjo6m78j fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
-Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=45197, secret=vFLYG1IG2bMGbw7FjCVihqgf7aYCD0C-KEkw9UvucwVcpCwg4SaRkPiZ_hgsdKmgslmsX7FrSuxpKNM79_rhDNlGhxIxylX-dttH4oc64pHgX7_9QVDUO0UyUBvvbdLrXzsvgqQXefwO6-CjCAfW2UfUWnJ2K5Yoa6GZ0CVQ0w0WHSKQ36iQoJ87_phVw0VmqEOKXK7QOOpjUdmAEqqF0NpGrwTzRZRyHzP7XrZF91YZkkqeQh1I9oTF--BlolUzgiQZ8SBBtUSrWx3a_mQqtmjvQlUQke_oo_XC0ZW_WTYNtMHFllIM6c9HbAkaEw4USWtMYrmyvz9-2jNdwCtKrA==)
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=45197, secret=<redacted>)
 [20260609 09:22:54.725 WARN  56:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
 java.nio.channels.UnresolvedAddressException: null
 	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
@@ -250,7 +250,7 @@ java.nio.channels.UnresolvedAddressException: null
 - Version: 261.643
 - Smart Mode: enabled
 - Published to JetBrains Relay: true
-- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=jsia26r4ro79cjo6m78j&session=z3dIIsFqiR25Z13kpksS61eKzOA0gj_GiSUe64gPVQk
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=<redacted>&session=<redacted>
 Join URL detected at 17448 ms; cleaning up container...
 
 | metric | value |
@@ -424,7 +424,7 @@ java.nio.channels.UnresolvedAddressException: null
 	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
 	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
 [20260609 09:23:20.760 WARN  66:WS:2jpa8oigl4u64ivhmsl4 fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
-Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=41279, secret=VL-jBX1j3VBrglk8LOS8p9yELBz3fN1qwvtI_uty5zQuM5tyR6Gdz4n1tAftQY7_25H3PbLU-35gEYeJ8huC-t0vyYQLDMxHpNuXz0qH8vYUL_e5y2qlLMXhyHpPCXfzXpXZ2qV4HbPjfTQxx1JmNqJDO4Mxe1QhsV9myzSeAAU0KWtvLnTKWi5uRP1LymjhQKCsgwZt0M3nkC46B6V6R1ZN7erKlsGWYIz14OX-wBd-GUz6ZFNx2wphOjgufMJXA6YUm-tjznc-B852zErL1Ag6AcijcxdemIUM3BK_HFknWuKKvwLYveFr8S_XIpsNn3hZG25GgDcKXnCK62xBcA==)
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=41279, secret=<redacted>)
 [20260609 09:23:21.216 WARN  66:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
 java.nio.channels.UnresolvedAddressException: null
 	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
@@ -463,7 +463,7 @@ java.nio.channels.UnresolvedAddressException: null
 - Version: 261.643
 - Smart Mode: enabled
 - Published to JetBrains Relay: true
-- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=2jpa8oigl4u64ivhmsl4&session=ARQznrR-BucVKWoGBaddCRIg5pX8ClzADdlRhgNUBHk
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=<redacted>&session=<redacted>
 Join URL detected at 24683 ms; cleaning up container...
 
 | metric | value |
@@ -590,7 +590,7 @@ Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/
 Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
 Dock HTTP Api listening to 127.0.0.1:36031
 [20260609 09:23:32.013 WARN  50:WS:napint2vi8u6nt5ttlvf fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
-Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=34973, secret=mdNGxGOrBo9s19XiU3SXPAFxDhRO9SFJi9ixj4xbIv6dircMLCU85l5OxMQSqVu2jGTlVeqnQVjqsZyujLRj6zXQyQaMUlcDYyOAI3BgTQ15IZeWtRRc0Hnt_vbFiNaoLFDcbF41cOzwAiPv9KKBqLv1gT824hMdcBSVaf6_QUwaEqdU79ysKVxP4K3yCd-jw92KMOgaDxx0XmYpkyo1-gpYcplqa2HYxyiHJSg14LL-Z2a_FuijZ2try0HQ8eEQt33I45AlsXxUxaQJ8DgdmI7nzAnqlnO60-ytj5bZcu994b0To3cv2IFJjvi2ALwLSxTeuQRNp_xmFvV6P1Q0BQ==)
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=34973, secret=<redacted>)
 - UID: napint2vi8u6nt5ttlvf
 - Running on Host ID: 7sulmps109mlcumg3e9a
 - Primary Host ID: 7sulmps109mlcumg3e9a
@@ -598,7 +598,7 @@ Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=3497
 - Version: 261.643
 - Smart Mode: enabled
 - Published to JetBrains Relay: true
-- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=napint2vi8u6nt5ttlvf&session=5P_ctwgxv0t6mTLPIQoymmkzStoAs8UHx56g-_T8sSQ
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=<redacted>&session=<redacted>
 Join URL detected at 8820 ms; cleaning up container...
 
 | metric | value |
