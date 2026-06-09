@@ -18,8 +18,9 @@ The demo shows that we can:
 6. Start the derived image on another node and see the preserved state there.
 
 The concrete user-state payload is Spring Petclinic: clone the repository, run a
-Maven package build, commit the result, then rebuild from the derived image on
-both nodes.
+Maven package build, create a tarball artifact, commit the result, then verify
+the derived image by grepping the checkout and reading the tarball on both
+nodes.
 
 ## Topology
 
@@ -229,13 +230,16 @@ local demo.py
   +--> slave: commit overlay upperdir as derived OverlayBD layer
   |       `--> registry: upload derived layer, config, manifest
   |
-  +--> slave: rebuild Petclinic from derived image
+  +--> slave: run derived workspace until Join URL
   |       `--> registry: first-use derived-layer reads as needed
   |
-  +--> master: rebuild Petclinic from derived image
+  +--> slave: grep Petclinic + read tarball from derived image
   |       `--> registry: first-use derived-layer reads as needed
   |
-  `--> master: rebuild Petclinic from derived image again
+  +--> master: grep Petclinic + read tarball from derived image
+  |       `--> registry: first-use derived-layer reads as needed
+  |
+  `--> master: grep Petclinic + read tarball from derived image again
 ```
 
 The scenario implemented by `demo.py` is:
@@ -246,11 +250,12 @@ The scenario implemented by `demo.py` is:
 | 2 | `master workspace cold` | Start the converted base workspace image on master after cleanup. |
 | 3 | `slave workspace cold` | Start the converted base workspace image on slave after cleanup. |
 | 4 | `slave workspace hot` | Start the same base image on slave again to show warmed local state. |
-| 5 | `slave clone+build coldish` | In a mutable slave container, clone Petclinic and run the first Maven package build. Workspace layers are warm; Petclinic state is new. |
+| 5 | `slave clone+build coldish` | In a mutable slave container, clone Petclinic, run the first Maven package build, and create a tarball artifact. Workspace layers are warm; Petclinic state is new. |
 | 6 | `commit derived image` | Convert the mutable upperdir into a new OverlayBD layer and push a derived image. |
-| 7 | `slave build coldish` | Run the derived image on slave. Petclinic state is present, but the derived layer may be first-use. |
-| 8 | `master build coldish` | Run the derived image on master. Petclinic state is present, but the derived layer may be first-use on master. |
-| 9 | `master build warm` | Run the derived image on master again to show warmed derived-layer behavior. |
+| 7 | `slave derived workspace coldish` | Run the derived workspace image on slave until the Join URL. This proves the committed user-state image still boots the real workspace entrypoint. |
+| 8 | `slave grep+read coldish` | Run the derived image on slave, grep the preserved Petclinic checkout, and read the generated tarball. The derived layer may be first-use. |
+| 9 | `master grep+read coldish` | Run the derived image on master, grep the preserved Petclinic checkout, and read the generated tarball. The derived layer may be first-use on master. |
+| 10 | `master grep+read warm` | Run the derived image on master again to show warmed derived-layer behavior for the same grep/read workload. |
 
 ## Scripts And Responsibilities
 
@@ -259,9 +264,9 @@ The scenario implemented by `demo.py` is:
 | `demo.py` | local | Interactive orchestration, confirmations, SSH invocation, dry-run, optional command preview. |
 | `remote/cleanup.sh` | master, slave | Kill demo tasks, remove demo containers/snapshots, clear local OverlayBD image refs/content/caches, enforce `rwMode=overlayfs`. |
 | `remote/run-workspace-until-join.sh` | master, slave | `rpull` an image, run it with OverlayBD + Sysbox, and measure until the Join URL. |
-| `remote/petclinic-build-mutable.sh` | slave | Run base image, clone Petclinic, build it, keep the container snapshot, and record upperdir metadata. |
+| `remote/petclinic-build-mutable.sh` | slave | Run base image, clone Petclinic, build it, create a tarball artifact, keep the container snapshot, and record upperdir metadata. |
 | `remote/commit-snapshot.sh` | slave | Export upperdir as OCI diff tar, apply it into an OverlayBD writable pair, commit an `.obd` layer, upload blobs/config/manifest. |
-| `remote/petclinic-build-repeat.sh` | master, slave | Run the derived image and measure repeat Maven package build. |
+| `remote/petclinic-read-artifact.sh` | master, slave | Run the derived image and measure grep plus generated tarball read. |
 | `remote/mutable-touch.sh` | legacy | Older small-file mutation path, kept for simple verification/debugging. |
 | `remote/verify-touch.sh` | legacy | Older touched-file verification path. |
 
@@ -415,7 +420,9 @@ The main metrics are:
 | hot local container snapshot | Existing container/snapshot restarted with `ctr tasks start`, without registry commit/pull. |
 | `clone_ms` | Time for `git clone --depth 1` inside the mutable Petclinic container. |
 | `first_build_ms` | First Maven package build inside the mutable Petclinic container. |
-| `repeat_build_ms` | Maven package build from the derived image. |
+| `create_tarball_ms` | Tarball artifact creation inside the mutable Petclinic container. |
+| `grep_ms` | Grep over the preserved Petclinic checkout from the derived image. |
+| `read_tarball_ms` | Sequential read of the generated tarball from the derived image. |
 | `approximate transferred bytes` | Sum of uploaded derived layer/config/manifest bytes in the commit step. |
 
 ## Glossary

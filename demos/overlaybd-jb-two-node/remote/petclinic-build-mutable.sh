@@ -9,6 +9,7 @@ LOG="$WORK/$NAME.log"
 ENV_FILE="$WORK/mutable.env"
 PROJECT_DIR="${PROJECT_DIR:-/home/workspace-agent/spring-petclinic}"
 JAR_PATH="$PROJECT_DIR/target/spring-petclinic-4.0.0-SNAPSHOT.jar"
+TAR_PATH="${TAR_PATH:-$PROJECT_DIR.tar.gz}"
 mkdir -p "$WORK"
 
 echo "image=$IMAGE_REF"
@@ -53,7 +54,7 @@ find /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots \
 
 PROJECT_PARENT="$(dirname "$PROJECT_DIR")"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
-BUILD_CMD="set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; clone_start=\$(date +%s%3N); git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; clone_end=\$(date +%s%3N); cd '$PROJECT_NAME'; build_start=\$(date +%s%3N); ./mvnw -q -DskipTests package; build_end=\$(date +%s%3N); test -f '$JAR_PATH'; du -sh /home/workspace-agent/.m2 '$PROJECT_DIR' '$JAR_PATH' || true; echo clone_ms=\$((clone_end-clone_start)); echo first_build_ms=\$((build_end-build_start)); set +x; printf '%s\\n' __ORCA_DEMO_BUILD_DONE__; while :; do sleep 3600; done"
+BUILD_CMD="set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; clone_start=\$(date +%s%3N); git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; clone_end=\$(date +%s%3N); cd '$PROJECT_NAME'; build_start=\$(date +%s%3N); ./mvnw -q -DskipTests package; build_end=\$(date +%s%3N); test -f '$JAR_PATH'; tar_start=\$(date +%s%3N); tar -czf '$TAR_PATH' -C '$PROJECT_PARENT' '$PROJECT_NAME'; tar_end=\$(date +%s%3N); test -f '$TAR_PATH'; du -sh /home/workspace-agent/.m2 '$PROJECT_DIR' '$JAR_PATH' '$TAR_PATH' || true; echo clone_ms=\$((clone_end-clone_start)); echo first_build_ms=\$((build_end-build_start)); echo create_tarball_ms=\$((tar_end-tar_start)); set +x; printf '%s\\n' __ORCA_DEMO_BUILD_DONE__; while :; do sleep 3600; done"
 
 echo "Executing local: $CTR -n $NS run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc $IMAGE_REF $NAME sh -lc <clone+build+sleep payload>"
 # DEMO-CMD: $CTR -n "$NS" run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc "$IMAGE_REF" "$NAME" sh -lc "set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\nnameserver 8.8.8.8\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; cd '$PROJECT_NAME'; ./mvnw -q -DskipTests package; test -f '$JAR_PATH'; while :; do sleep 3600; done" > >(tee -a "$LOG") 2>&1 &
@@ -175,6 +176,7 @@ UID_MAP='$UID_MAP'
 GID_MAP='$GID_MAP'
 TOUCH_PATH=$JAR_PATH
 PROJECT_DIR=$PROJECT_DIR
+TAR_PATH=$TAR_PATH
 LOG=$LOG
 EOF_INNER
 

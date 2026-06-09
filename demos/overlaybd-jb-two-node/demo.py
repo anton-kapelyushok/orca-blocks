@@ -53,6 +53,10 @@ class Config:
     def jar_path(self) -> str:
         return f"{self.project_dir}/target/spring-petclinic-4.0.0-SNAPSHOT.jar"
 
+    @property
+    def tar_path(self) -> str:
+        return f"{self.project_dir}.tar.gz"
+
 
 @dataclass(frozen=True)
 class RemoteStep:
@@ -90,6 +94,7 @@ def print_config(config: Config) -> None:
   derived slave ref:  {config.derived_image_slave}
   project dir:        {config.project_dir}
   jar path:           {config.jar_path}
+  tar path:           {config.tar_path}
   run id:             {config.run_id}
 """
     )
@@ -106,6 +111,7 @@ def base_env(config: Config) -> dict[str, str]:
         "DERIVED_TAG": config.derived_tag,
         "TOUCH_PATH": config.jar_path,
         "PROJECT_DIR": config.project_dir,
+        "TAR_PATH": config.tar_path,
         "TIMEOUT_SECONDS": str(config.timeout_seconds),
     }
 
@@ -148,6 +154,7 @@ def interpolate_command(command: str, env: dict[str, str]) -> str:
         "PROJECT_PARENT": str(Path(env["PROJECT_DIR"]).parent),
         "PROJECT_NAME": Path(env["PROJECT_DIR"]).name,
         "JAR_PATH": f"{env['PROJECT_DIR']}/target/spring-petclinic-4.0.0-SNAPSHOT.jar",
+        "TAR_PATH": f"{env['PROJECT_DIR']}.tar.gz",
     }
     if "CONTAINER_NAME" in env:
         derived["NAME"] = env["CONTAINER_NAME"]
@@ -371,46 +378,62 @@ def main() -> int:
             [RemoteStep("slave", config.slave, "commit-snapshot.sh")],
         ),
         ScenarioStep(
-            "run Maven package on slave from first-use derived image",
-            "slave build coldish",
+            "run JB workspace on slave from derived image until Join URL",
+            "slave derived workspace coldish",
             [
                 RemoteStep(
                     "slave",
                     config.slave,
-                    "petclinic-build-repeat.sh",
+                    "run-workspace-until-join.sh",
                     {
                         "IMAGE_REF": config.derived_image_slave,
-                        "CONTAINER_NAME": f"demo-jb-slave-petclinic-coldish-{config.run_id}",
+                        "KEEP_AFTER_JOIN": "0",
+                        "CONTAINER_NAME": f"demo-jb-slave-derived-workspace-coldish-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "run Maven package on master from first-use derived image",
-            "master build coldish",
+            "grep Petclinic state and read tarball on slave from first-use derived image",
+            "slave grep+read coldish",
             [
                 RemoteStep(
-                    "master",
-                    config.master,
-                    "petclinic-build-repeat.sh",
+                    "slave",
+                    config.slave,
+                    "petclinic-read-artifact.sh",
                     {
-                        "IMAGE_REF": config.derived_image_master,
-                        "CONTAINER_NAME": f"demo-jb-master-petclinic-coldish-{config.run_id}",
+                        "IMAGE_REF": config.derived_image_slave,
+                        "CONTAINER_NAME": f"demo-jb-slave-petclinic-read-coldish-{config.run_id}",
                     },
                 )
             ],
         ),
         ScenarioStep(
-            "warm-run Maven package on master from derived image",
-            "master build warm",
+            "grep Petclinic state and read tarball on master from first-use derived image",
+            "master grep+read coldish",
             [
                 RemoteStep(
                     "master",
                     config.master,
-                    "petclinic-build-repeat.sh",
+                    "petclinic-read-artifact.sh",
                     {
                         "IMAGE_REF": config.derived_image_master,
-                        "CONTAINER_NAME": f"demo-jb-master-petclinic-warm-{config.run_id}",
+                        "CONTAINER_NAME": f"demo-jb-master-petclinic-read-coldish-{config.run_id}",
+                    },
+                )
+            ],
+        ),
+        ScenarioStep(
+            "warm-run grep Petclinic state and read tarball on master from derived image",
+            "master grep+read warm",
+            [
+                RemoteStep(
+                    "master",
+                    config.master,
+                    "petclinic-read-artifact.sh",
+                    {
+                        "IMAGE_REF": config.derived_image_master,
+                        "CONTAINER_NAME": f"demo-jb-master-petclinic-read-warm-{config.run_id}",
                     },
                 )
             ],

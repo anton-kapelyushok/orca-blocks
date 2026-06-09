@@ -6,7 +6,7 @@ See [architecture.md](architecture.md) for the component map and data flow.
 The topology names are intentional:
 
 - `master`: the droplet that hosts the registry, default `root@178.128.247.74`.
-- `slave`: the Google Cloud node, default `anton.kapeliushok@104.155.88.61`.
+- `slave`: the Google Cloud node, default `anton.kapeliushok@34.76.115.252`.
 
 The local Python runner only orchestrates SSH, confirmations, and timing tables.
 By default, the confirmation prompt stays compact and only shows which remote
@@ -23,19 +23,23 @@ main remote commands, such as `ctr rpull`, `ctr run`, `overlaybd-apply`,
 5. Clone and build Spring Petclinic on slave.
 6. Export the slave overlay upperdir, convert it to an OverlayBD layer, and push
    the derived image to the master registry.
-7. Run `./mvnw -q -DskipTests package` on slave from the first-use derived
-   image.
-8. Run `./mvnw -q -DskipTests package` on master from the first-use derived
-   image.
-9. Run `./mvnw -q -DskipTests package` on master again.
+7. Run the derived JetBrains Workspace image on slave until the Join URL.
+8. Grep the preserved Petclinic checkout and read the generated tarball on
+   slave from the first-use derived image.
+9. Grep the preserved Petclinic checkout and read the generated tarball on
+   master from the first-use derived image.
+10. Grep the preserved Petclinic checkout and read the generated tarball on
+   master again.
 
 Step 5 is "coldish": the workspace/base image layers have already been warmed on
 slave by Steps 3 and 4, but the Petclinic checkout, Maven cache, build output,
-and jar are new user state for this environment.
+jar, and generated tarball are new user state for this environment.
 
-Steps 7 and 8 are also "coldish": the Petclinic checkout, `.m2`, and build
-output are preserved in the derived image, but the new derived OverlayBD layer
-may be first-use on that node after the commit.
+Step 7 proves the derived image still boots the real workspace entrypoint and
+reaches the connection line. Steps 8 and 9 are also "coldish": the Petclinic
+checkout, `.m2`, build output, jar, and generated tarball are preserved in the
+derived image, but the new derived OverlayBD layer may be first-use on that node
+after the commit.
 
 The cleanup step keeps durable state intact: registry blobs and MySQL metadata
 are not deleted. It clears local OverlayBD image refs, snapshots, content, and
@@ -108,7 +112,7 @@ Useful overrides:
 ```bash
 python3 demos/overlaybd-jb-two-node/demo.py \
   --master root@178.128.247.74 \
-  --slave anton.kapeliushok@104.155.88.61 \
+  --slave anton.kapeliushok@34.76.115.252 \
   --registry 178.128.247.74:5000 \
   --master-registry 127.0.0.1:5000
 ```
@@ -133,10 +137,11 @@ python3 demos/overlaybd-jb-two-node/demo.py --yes --dry-run --show-commands
 - `remote/run-workspace-until-join.sh`: runs the workspace image until the Join
   URL.
 - `remote/petclinic-build-mutable.sh`: clones Spring Petclinic on slave, runs
-  the first Maven package build, stops the task, and records the overlay
-  upperdir plus the base OverlayBD config.
+  the first Maven package build, creates a tarball artifact, stops the task,
+  and records the overlay upperdir plus the base OverlayBD config.
 - `remote/commit-snapshot.sh`: exports the overlay upperdir as an OCI diff tar,
   converts it into an OverlayBD layer with `overlaybd-apply` and
   `overlaybd-commit`, then pushes a derived manifest.
-- `remote/petclinic-build-repeat.sh`: runs the derived image and measures a
-  repeat Maven package build against the preserved checkout, `.m2`, and jar.
+- `remote/petclinic-read-artifact.sh`: runs the derived image and measures a
+  grep against the preserved checkout plus a sequential read of the generated
+  tarball.
