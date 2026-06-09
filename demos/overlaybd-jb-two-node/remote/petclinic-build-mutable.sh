@@ -53,7 +53,7 @@ find /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots \
 
 PROJECT_PARENT="$(dirname "$PROJECT_DIR")"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
-BUILD_CMD="set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; clone_start=\$(date +%s%3N); git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; clone_end=\$(date +%s%3N); cd '$PROJECT_NAME'; build_start=\$(date +%s%3N); ./mvnw -q -DskipTests package; build_end=\$(date +%s%3N); test -f '$JAR_PATH'; du -sh /home/workspace-agent/.m2 '$PROJECT_DIR' '$JAR_PATH' || true; echo clone_ms=\$((clone_end-clone_start)); echo first_build_ms=\$((build_end-build_start)); echo __ORCA_DEMO_BUILD_DONE__; while :; do sleep 3600; done"
+BUILD_CMD="set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; clone_start=\$(date +%s%3N); git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; clone_end=\$(date +%s%3N); cd '$PROJECT_NAME'; build_start=\$(date +%s%3N); ./mvnw -q -DskipTests package; build_end=\$(date +%s%3N); test -f '$JAR_PATH'; du -sh /home/workspace-agent/.m2 '$PROJECT_DIR' '$JAR_PATH' || true; echo clone_ms=\$((clone_end-clone_start)); echo first_build_ms=\$((build_end-build_start)); set +x; printf '%s\\n' __ORCA_DEMO_BUILD_DONE__; while :; do sleep 3600; done"
 
 echo "Executing local: $CTR -n $NS run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc $IMAGE_REF $NAME sh -lc <clone+build+sleep payload>"
 # DEMO-CMD: $CTR -n "$NS" run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc "$IMAGE_REF" "$NAME" sh -lc "set -eux; sudo sh -c 'printf \"nameserver 1.1.1.1\nnameserver 8.8.8.8\n\" > /etc/resolv.conf' || true; cd '$PROJECT_PARENT'; rm -rf '$PROJECT_NAME'; git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git '$PROJECT_NAME'; cd '$PROJECT_NAME'; ./mvnw -q -DskipTests package; test -f '$JAR_PATH'; while :; do sleep 3600; done" > >(tee -a "$LOG") 2>&1 &
@@ -78,7 +78,7 @@ while true; do
     if [[ -z "$first_user_text_ms" ]]; then
       first_user_text_ms=$((now_ms - run_start_ms))
     fi
-    if [[ "$line" == "__ORCA_DEMO_BUILD_DONE__" ]]; then
+    if [[ "$line" == *"__ORCA_DEMO_BUILD_DONE__"* ]]; then
       build_done_ms=$((now_ms - run_start_ms))
       break
     fi
@@ -97,13 +97,15 @@ while true; do
 done
 exec 3<&-
 
-if [[ -z "$task_ready_ms" || -z "$build_done_ms" ]]; then
-  $CTR -n "$NS" tasks kill -s SIGKILL "$NAME" || true
-  $CTR -n "$NS" tasks rm "$NAME" || true
-  $CTR -n "$NS" containers rm "$NAME" || true
-  wait "$runner_pid" || true
+if [[ -z "$task_ready_ms" ]]; then
+  echo "task was not detected; leaving any remote state for inspection"
+  echo "container=$NAME"
   rm -f "$fifo"
   exit 1
+fi
+if [[ -z "$build_done_ms" ]]; then
+  echo "build marker was not detected, but task exists; continuing to snapshot discovery"
+  build_done_ms="not detected"
 fi
 
 echo "Executing local: find task pid and containerd overlay upperdir"

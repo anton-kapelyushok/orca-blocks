@@ -62,7 +62,7 @@ while true; do
     if [[ -z "$first_user_text_ms" ]]; then
       first_user_text_ms=$((now_ms - run_start_ms))
     fi
-    if [[ "$line" == "__ORCA_DEMO_TOUCH_DONE__" ]]; then
+    if [[ "$line" == *"__ORCA_DEMO_TOUCH_DONE__"* ]]; then
       touch_ms=$((now_ms - run_start_ms))
     fi
   fi
@@ -89,7 +89,7 @@ while [[ -z "$touch_ms" ]]; do
     if [[ -z "$first_user_text_ms" ]]; then
       first_user_text_ms=$((now_ms - run_start_ms))
     fi
-    if [[ "$line" == "__ORCA_DEMO_TOUCH_DONE__" ]]; then
+    if [[ "$line" == *"__ORCA_DEMO_TOUCH_DONE__"* ]]; then
       touch_ms=$((now_ms - run_start_ms))
     fi
   fi

@@ -64,7 +64,7 @@ while true; do
     if [[ -z "$first_user_text_ms" ]]; then
       first_user_text_ms=$((now_ms - run_start_ms))
     fi
-    if [[ "$line" == "__ORCA_DEMO_REPEAT_BUILD_DONE__" ]]; then
+    if [[ "$line" == *"__ORCA_DEMO_REPEAT_BUILD_DONE__"* ]]; then
       repeat_done_ms=$((now_ms - run_start_ms))
       break
     fi

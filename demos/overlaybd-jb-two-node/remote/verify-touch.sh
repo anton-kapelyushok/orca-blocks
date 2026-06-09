@@ -54,7 +54,7 @@ while true; do
     if [[ -z "$first_ms" ]]; then
       first_ms=$((now_ms - after_rpull_ms))
     fi
-    if [[ "$line" == "__ORCA_DEMO_VERIFY_DONE__" ]]; then
+    if [[ "$line" == *"__ORCA_DEMO_VERIFY_DONE__"* ]]; then
       verify_ms=$((now_ms - after_rpull_ms))
     fi
   fi

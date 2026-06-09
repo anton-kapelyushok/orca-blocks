@@ -1,0 +1,1153 @@
+STEP_MARKER CLEANUP
+=============== Cleanup ====================
+hostname=ubuntu-s-1vcpu-1gb-ams3
+rwMode before cleanup: overlayfs
+Executing local: findmnt -rn -o TARGET,SOURCE,FSTYPE | grep overlaybd || true
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby tasks ls
+TASK    PID    STATUS
+Executing local: kill demo tasks
+Executing local: remove demo containers
+Executing local: remove demo snapshots
+Executing local: remove local OverlayBD image refs for orca/overlaybd-jb-real
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+Executing local: remove local OverlayBD snapshots
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby snapshots --snapshotter overlaybd rm sha256:5d4d468c8300302c8ac0f34be91f906b8f0be82a9d0ae57194864b1aaf3897f2
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby snapshots --snapshotter overlaybd rm sha256:c0d39e0e4e8144f9853fea07a2872b94cc08333b6304607a8e8cec260503ddf2
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby snapshots --snapshotter overlaybd rm sha256:7a9c9a49cd840e93ab258f0d7a2ff4f89f81a1aca900c53e50996c93b6251df3
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby snapshots --snapshotter overlaybd rm sha256:1e40e7450dafa0f45f9088f84b7ec0c735271bed9a0f9558016e933d1fdd1e17
+Executing local: remove local containerd content
+Executing local: clear OverlayBD local caches, keep registry/MySQL durable state
+Executing local: final active runtime check
+TASK    PID    STATUS
+CONTAINER    IMAGE    RUNTIME
+4.0K	/opt/overlaybd/registry_cache
+4.0K	/opt/overlaybd/gzip_cache
+rwMode after cleanup: overlayfs
+
+| metric | value |
+| --- | ---: |
+| cleanup elapsed | 1048 ms |
+hostname=node2
+rwMode before cleanup: overlayfs
+Executing local: findmnt -rn -o TARGET,SOURCE,FSTYPE | grep overlaybd || true
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby tasks ls
+TASK    PID    STATUS
+Executing local: kill demo tasks
+Executing local: remove demo containers
+Executing local: remove demo snapshots
+Executing local: remove local OverlayBD image refs for orca/overlaybd-jb-real
+178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+Executing local: remove local OverlayBD snapshots
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby snapshots --snapshotter overlaybd rm sha256:5d4d468c8300302c8ac0f34be91f906b8f0be82a9d0ae57194864b1aaf3897f2
+Executing local: remove local containerd content
+sha256:0e760fdfbc48ba8041e7c6db999bb40bfca508b4be580ac75d32c4e29d202ce1
+sha256:2039be0c5ec6ce8566809626a252c930216a92109c043f282504accb5ee3c0c6
+sha256:310c62b5e7ca5b08167e4384c68db0fd2905dd9c7493756d356e893909057601
+sha256:4f55086f7dd096d48b0e49be066971a8ed996521c2e190aa21b2435a847198b4
+sha256:84f5eff04246b56d48d1ed6cbd82d6bc7e53f7e790db6a467f92571c69f3289e
+sha256:9292219a28ffaeaa2dc461905c5c2d773bf49671f9c927c338c6f28ce08ac61b
+sha256:d1a8d0a4eeb63aff09f5f34d4d80505e0ba81905f36158cc3970d8e07179e59e
+sha256:e2ac70e7319a02c5a477f5825259bd118b94e8b02c279c67afa63adab6d8685b
+Executing local: clear OverlayBD local caches, keep registry/MySQL durable state
+Executing local: final active runtime check
+TASK    PID    STATUS
+CONTAINER    IMAGE    RUNTIME
+4.0K	/opt/overlaybd/registry_cache
+4.0K	/opt/overlaybd/gzip_cache
+rwMode after cleanup: overlayfs
+
+| metric | value |
+| --- | ---: |
+| cleanup elapsed | 555 ms |
+
+STEP_MARKER MASTER_WORKSPACE_COLD
+=============== Master Workspace Cold ====================
+image=127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+container=demo-jb-master-workspace-cold-20260609T092232Z
+log=/root/orca-overlaybd-demo-20260609T092232Z/demo-jb-master-workspace-cold-20260609T092232Z.log
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m| 26.8 KiB/26.8 KiB
+elapsed: 0.1 s                                                                    total:  42.3 K (401.3 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.2 s                                                                    total:  42.3 K (208.5 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.3 s                                                                    total:  42.3 K (140.1 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.4 s                                                                    total:  42.3 K (105.3 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.5 s                                                                    total:  42.3 K (84.3 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.6 s                                                                    total:  42.3 K (70.2 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.7 s                                                                    total:  42.3 K (60.3 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.8 s                                                                    total:  42.3 K (52.8 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:        resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.9 s                                                                    total:  42.3 K (46.9 KiB/s)
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z demo-jb-master-workspace-cold-20260609T092232Z
+[2m2026-06-09T09:22:39.855596Z[0m [32m INFO[0m [2mfleet::artefact[0m[2m:[0m dock metadata file exists, inferring JBR version from it
+[2m2026-06-09T09:22:39.888723Z[0m [34mDEBUG[0m [2mfleet::workspace[0m[2m:[0m Starting Fleet Workspace with command: cd "/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/dock" && "/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr/bin/java" "-Dfleet.fsdaemon=/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/fsdaemon/fsdaemon.sig" "@argfile.txt" "--workspaceOnly" "--auth=accept-everyone" "--publish" "--enableSmartMode"
+sudo: unable to resolve host ubuntu-s-1vcpu-1gb-ams3: Temporary failure in name resolution
+time="2026-06-09T09:22:42.246132465Z" level=info msg="Starting up"
+time="2026-06-09T09:22:42.334632282Z" level=info msg="containerd not running, starting managed containerd"
+time="2026-06-09T09:22:42.350414211Z" level=info msg="started new containerd process" address=/var/run/docker/containerd/containerd.sock module=libcontainerd pid=111
+time="2026-06-09T09:22:43.666042121Z" level=info msg="starting containerd" revision= version=2.2.1
+time="2026-06-09T09:22:43.704691047Z" level=warning msg="Configuration migrated from version 2, use `containerd config migrate` to avoid migration" t="5.931µs"
+time="2026-06-09T09:22:43.704732427Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+time="2026-06-09T09:22:43.711743892Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+time="2026-06-09T09:22:43.711809355Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+time="2026-06-09T09:22:43.719849896Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+time="2026-06-09T09:22:43.719955888Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+time="2026-06-09T09:22:43.719975497Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720284907Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720307049Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720836282Z" level=info msg="skip loading plugin" error="path /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.btrfs (ext4) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720863403Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720881151Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.720895715Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.728301928Z" level=info msg="skip loading plugin" error="EROFS unsupported, please `modprobe erofs`: skip plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.728340143Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.730383977Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.740487751Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.740710068Z" level=info msg="skip loading plugin" error="lstat /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:22:43.740806603Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+time="2026-06-09T09:22:43.741294285Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+time="2026-06-09T09:22:43.742312813Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+time="2026-06-09T09:22:43.742591821Z" level=info msg="metadata content store policy set" policy=shared
+time="2026-06-09T09:22:43.783350822Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+time="2026-06-09T09:22:43.783462764Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+time="2026-06-09T09:22:43.783532346Z" level=info msg="built-in NRI default validator is disabled"
+time="2026-06-09T09:22:43.783557893Z" level=info msg="runtime interface created"
+time="2026-06-09T09:22:43.783567278Z" level=info msg="created NRI interface"
+time="2026-06-09T09:22:43.783590320Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:22:43.783768944Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:22:43.783792031Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+time="2026-06-09T09:22:43.783813654Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+time="2026-06-09T09:22:43.783832161Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+time="2026-06-09T09:22:43.784107727Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784136763Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784157719Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784177379Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784195104Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784356870Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784407949Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784428480Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+time="2026-06-09T09:22:43.784447550Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+time="2026-06-09T09:22:43.784635592Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+time="2026-06-09T09:22:43.784669460Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784699539Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784731371Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784749322Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784765407Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784780099Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784795782Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784818409Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784834606Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.784876351Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+time="2026-06-09T09:22:43.784920595Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+time="2026-06-09T09:22:43.784975837Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+time="2026-06-09T09:22:43.785049113Z" level=info msg="Get image filesystem path \"/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs\" for snapshotter \"overlayfs\""
+time="2026-06-09T09:22:43.785071913Z" level=info msg="Start snapshots syncer"
+time="2026-06-09T09:22:43.793247794Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+time="2026-06-09T09:22:43.793870843Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"containerdRootDir\":\"/var/lib/docker/containerd/daemon\",\"containerdEndpoint\":\"/var/run/docker/containerd/containerd.sock\",\"rootDir\":\"/var/lib/docker/containerd/daemon/io.containerd.grpc.v1.cri\",\"stateDir\":\"/var/run/docker/containerd/daemon/io.containerd.grpc.v1.cri\"}"
+time="2026-06-09T09:22:43.794050630Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+time="2026-06-09T09:22:43.794557610Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+time="2026-06-09T09:22:43.795003446Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.795733543Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.795766502Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.796026060Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+time="2026-06-09T09:22:43.796135073Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.796235273Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.796267738Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.796338778Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.796506586Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+time="2026-06-09T09:22:43.796835737Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:22:43.796996652Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:22:43.797250637Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:22:43.797428231Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:22:43.797454573Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+time="2026-06-09T09:22:43.797536151Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+time="2026-06-09T09:22:43.800760244Z" level=info msg=serving... address=/var/run/docker/containerd/containerd-debug.sock
+time="2026-06-09T09:22:43.801091772Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock.ttrpc
+time="2026-06-09T09:22:43.801373337Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock
+time="2026-06-09T09:22:43.802477240Z" level=info msg="containerd successfully booted in 0.138915s"
+time="2026-06-09T09:22:43.856550265Z" level=info msg="OTEL tracing is not configured, using no-op tracer provider"
+time="2026-06-09T09:22:43.857464168Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/etc/cdi
+time="2026-06-09T09:22:43.857497371Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/var/run/cdi
+time="2026-06-09T09:22:44.708828064Z" level=info msg="Creating a containerd client" address=/var/run/docker/containerd/containerd.sock timeout=1m0s
+time="2026-06-09T09:22:44.750225591Z" level=info msg="Loading containers: start."
+time="2026-06-09T09:22:44.756288064Z" level=info msg="Starting daemon with containerd snapshotter integration enabled"
+time="2026-06-09T09:22:44.768533323Z" level=info msg="Restoring containers: start."
+time="2026-06-09T09:22:44.785663575Z" level=info msg="Deleting nftables IPv6 rules" error="exec: \"nft\": executable file not found in $PATH"
+time="2026-06-09T09:22:45.095769403Z" level=info msg="Loading containers: done."
+time="2026-06-09T09:22:45.317856765Z" level=info msg="Docker daemon" commit="29.1.3-0ubuntu3~24.04.2" containerd-snapshotter=true storage-driver=overlayfs version=29.1.3
+time="2026-06-09T09:22:45.318125666Z" level=info msg="Initializing buildkit"
+Configure file log with class fleet.dock.impl.FleetDockLogbackConfigurator (/home/workspace-agent/.cache/JetBrains/Air/log/air.log)
+time="2026-06-09T09:22:45.606269525Z" level=info msg="Completed buildkit initialization"
+time="2026-06-09T09:22:45.636432451Z" level=info msg="Daemon has completed initialization"
+time="2026-06-09T09:22:45.636813722Z" level=info msg="API listen on /var/run/docker.sock"
+Loaded default logback configuration
+Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/Air/log.conf.toml'
+Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
+Dock HTTP Api listening to 127.0.0.1:36479
+[20260609 09:22:53.557 WARN  56:WS:jsia26r4ro79cjo6m78j fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=45197, secret=vFLYG1IG2bMGbw7FjCVihqgf7aYCD0C-KEkw9UvucwVcpCwg4SaRkPiZ_hgsdKmgslmsX7FrSuxpKNM79_rhDNlGhxIxylX-dttH4oc64pHgX7_9QVDUO0UyUBvvbdLrXzsvgqQXefwO6-CjCAfW2UfUWnJ2K5Yoa6GZ0CVQ0w0WHSKQ36iQoJ87_phVw0VmqEOKXK7QOOpjUdmAEqqF0NpGrwTzRZRyHzP7XrZF91YZkkqeQh1I9oTF--BlolUzgiQZ8SBBtUSrWx3a_mQqtmjvQlUQke_oo_XC0ZW_WTYNtMHFllIM6c9HbAkaEw4USWtMYrmyvz9-2jNdwCtKrA==)
+[20260609 09:22:54.725 WARN  56:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
+java.nio.channels.UnresolvedAddressException: null
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:152)
+	at java.base/sun.nio.ch.SocketChannelImpl.checkRemote(SocketChannelImpl.java:918)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:936)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.SocketImpl.connect$ktor_network(SocketImpl.kt:44)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.ConnectUtilsJvmKt.tcpConnect(ConnectUtilsJvm.kt:21)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.TcpSocketBuilder.connect(TcpSocketBuilder.kt:48)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.ConnectionFactory.connect(ConnectionFactory.kt:30)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invokeSuspend(Endpoint.kt:215)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndspatched(Undispatched.kt:67)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturnIgnoreTimeout(Undispatched.kt:50)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.setupTimeout(Timeout.kt:149)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.withTimeoutOrNull(Timeout.kt:105)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.connect(Endpoint.kt:223)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.makeDedicatedRequest(Endpoint.kt:102)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.execute(Endpoint.kt:67)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.CIOEngine.execute(CIOEngine.kt:89)
+	at fleet.util.network@261.643/fleet.net.ProxyDelegatingClientEngine.execute(HttpProxyExtensions.kt:149)
+	at io.ktor.client.core@3.4.1/io.ktor.client.engine.HttpClientEngine$executeWithinCallContext$2.invokeSuspend(HttpClientEngine.kt:183)
+	at fleet.kotlin.runtime/kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at fleet.kotlin.runtime/kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at fleet.kotlin.runtime/kotlinx.coroutines.internal.SoftLimitedDispatcher$Worker.run(SoftLimitedDispatcher.kt:130)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:610)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:1188)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
+- UID: jsia26r4ro79cjo6m78j
+- Running on Host ID: 7sulmps109mlcumg3e9a
+- Primary Host ID: 7sulmps109mlcumg3e9a
+- Lobby Address: https://lobby.fleet.api.jetbrains.com:443
+- Version: 261.643
+- Smart Mode: enabled
+- Published to JetBrains Relay: true
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=jsia26r4ro79cjo6m78j&session=z3dIIsFqiR25Z13kpksS61eKzOA0gj_GiSUe64gPVQk
+Join URL detected at 17448 ms; cleaning up container...
+
+| metric | value |
+| --- | ---: |
+| rpull | 1085 ms |
+| first user text appears | 1703 ms |
+| Dock HTTP API | 9463 ms |
+| Workspace Server | 16437 ms |
+| Join URL | 17448 ms |
+| cleanup after run | 1147 ms |
+
+STEP_MARKER SLAVE_WORKSPACE_COLD
+=============== Slave Workspace Cold ====================
+image=178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+container=demo-jb-slave-workspace-cold-20260609T092232Z
+log=/root/orca-overlaybd-demo-20260609T092232Z/demo-jb-slave-workspace-cold-20260609T092232Z.log
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:   resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   downloading    |[32m[0m--------------------------------------|    0.0 B/26.8 KiB
+elapsed: 0.1 s                                                                    total:  15.4 K (149.3 KiB/s)
+178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:   resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.2 s                                                                    total:  42.3 K (208.4 KiB/s)
+178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:   resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.3 s                                                                    total:  42.3 K (140.4 KiB/s)
+178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z:   resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:e4b538e83ecade03003766c3c3d2e0b80a7f0540581f238542f0380464385584: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a5f8a3e87ff4aa82d9ba351a040507611f212333ec0d3ff3755ffb5437184cdf:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.4 s                                                                    total:  42.3 K (105.3 KiB/s)
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z demo-jb-slave-workspace-cold-20260609T092232Z
+[2m2026-06-09T09:23:01.231565Z[0m [32m INFO[0m [2mfleet::artefact[0m[2m:[0m dock metadata file exists, inferring JBR version from it
+[2m2026-06-09T09:23:01.280556Z[0m [34mDEBUG[0m [2mfleet::workspace[0m[2m:[0m Starting Fleet Workspace with command: cd "/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/dock" && "/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr/bin/java" "-Dfleet.fsdaemon=/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/fsdaemon/fsdaemon.sig" "@argfile.txt" "--workspaceOnly" "--auth=accept-everyone" "--publish" "--enableSmartMode"
+sudo: unable to resolve host node2: Temporary failure in name resolution
+time="2026-06-09T09:23:07.116636782Z" level=info msg="Starting up"
+time="2026-06-09T09:23:07.177939118Z" level=info msg="containerd not running, starting managed containerd"
+time="2026-06-09T09:23:07.181276154Z" level=info msg="started new containerd process" address=/var/run/docker/containerd/containerd.sock module=libcontainerd pid=114
+Configure file log with class fleet.dock.impl.FleetDockLogbackConfigurator (/home/workspace-agent/.cache/JetBrains/Air/log/air.log)
+Loaded default logback configuration
+Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/Air/log.conf.toml'
+Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
+time="2026-06-09T09:23:10.444868076Z" level=info msg="starting containerd" revision= version=2.2.1
+time="2026-06-09T09:23:10.481170130Z" level=warning msg="Configuration migrated from version 2, use `containerd config migrate` to avoid migration" t="6.722µs"
+time="2026-06-09T09:23:10.481306260Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+time="2026-06-09T09:23:10.481391618Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+time="2026-06-09T09:23:10.481411939Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+time="2026-06-09T09:23:10.486149026Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+time="2026-06-09T09:23:10.486215954Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+time="2026-06-09T09:23:10.486237922Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486334663Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486352053Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486757578Z" level=info msg="skip loading plugin" error="path /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.btrfs (ext4) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486786712Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486806530Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.486820252Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.487134937Z" level=info msg="skip loading plugin" error="EROFS unsupported, please `modprobe erofs`: skip plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.487156667Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.487278039Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.490938656Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.492614831Z" level=info msg="skip loading plugin" error="lstat /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:10.492819702Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+time="2026-06-09T09:23:10.494654384Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+time="2026-06-09T09:23:10.497225764Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+time="2026-06-09T09:23:10.497397480Z" level=info msg="metadata content store policy set" policy=shared
+time="2026-06-09T09:23:10.508997147Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+time="2026-06-09T09:23:10.511385250Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+time="2026-06-09T09:23:10.511559825Z" level=info msg="built-in NRI default validator is disabled"
+time="2026-06-09T09:23:10.511575347Z" level=info msg="runtime interface created"
+time="2026-06-09T09:23:10.511583996Z" level=info msg="created NRI interface"
+time="2026-06-09T09:23:10.511602125Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:23:10.511789253Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:23:10.511822017Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+time="2026-06-09T09:23:10.511844889Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+time="2026-06-09T09:23:10.511864374Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+time="2026-06-09T09:23:10.512182996Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512235800Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512252964Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512272633Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512291450Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512305842Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512320010Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.512335146Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+time="2026-06-09T09:23:10.512354115Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+time="2026-06-09T09:23:10.515795287Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+time="2026-06-09T09:23:10.515847183Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515875401Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515895382Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515915281Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515930681Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515948331Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515964411Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515983159Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.515999640Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.516028323Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+time="2026-06-09T09:23:10.516045377Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+time="2026-06-09T09:23:10.516096169Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+time="2026-06-09T09:23:10.516151410Z" level=info msg="Get image filesystem path \"/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs\" for snapshotter \"overlayfs\""
+time="2026-06-09T09:23:10.516170845Z" level=info msg="Start snapshots syncer"
+time="2026-06-09T09:23:10.517763005Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+time="2026-06-09T09:23:10.519924365Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"containerdRootDir\":\"/var/lib/docker/containerd/daemon\",\"containerdEndpoint\":\"/var/run/docker/containerd/containerd.sock\",\"rootDir\":\"/var/lib/docker/containerd/daemon/io.containerd.grpc.v1.cri\",\"stateDir\":\"/var/run/docker/containerd/daemon/io.containerd.grpc.v1.cri\"}"
+time="2026-06-09T09:23:10.522069755Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+time="2026-06-09T09:23:10.523549266Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+time="2026-06-09T09:23:10.524254560Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.525458776Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.526419132Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.526500188Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+time="2026-06-09T09:23:10.526572760Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.526767017Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.527517855Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.527632377Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.527684763Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+time="2026-06-09T09:23:10.529589841Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:23:10.529844169Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:23:10.529867736Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:23:10.529883832Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:23:10.529902384Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+time="2026-06-09T09:23:10.529921519Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+time="2026-06-09T09:23:10.535558904Z" level=info msg=serving... address=/var/run/docker/containerd/containerd-debug.sock
+time="2026-06-09T09:23:10.536650434Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock.ttrpc
+time="2026-06-09T09:23:10.538649103Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock
+time="2026-06-09T09:23:10.538736293Z" level=info msg="containerd successfully booted in 0.095056s"
+time="2026-06-09T09:23:10.596556566Z" level=info msg="OTEL tracing is not configured, using no-op tracer provider"
+time="2026-06-09T09:23:10.598294865Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/etc/cdi
+time="2026-06-09T09:23:10.598518014Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/var/run/cdi
+time="2026-06-09T09:23:11.931339084Z" level=info msg="Creating a containerd client" address=/var/run/docker/containerd/containerd.sock timeout=1m0s
+time="2026-06-09T09:23:11.960876998Z" level=info msg="Loading containers: start."
+time="2026-06-09T09:23:11.960986499Z" level=info msg="Starting daemon with containerd snapshotter integration enabled"
+time="2026-06-09T09:23:11.974617451Z" level=info msg="Restoring containers: start."
+time="2026-06-09T09:23:12.002289660Z" level=info msg="Deleting nftables IPv6 rules" error="exec: \"nft\": executable file not found in $PATH"
+Dock HTTP Api listening to 127.0.0.1:36265
+time="2026-06-09T09:23:12.519794341Z" level=info msg="Loading containers: done."
+time="2026-06-09T09:23:12.751522242Z" level=info msg="Docker daemon" commit="29.1.3-0ubuntu3~24.04.2" containerd-snapshotter=true storage-driver=overlayfs version=29.1.3
+time="2026-06-09T09:23:12.752100857Z" level=info msg="Initializing buildkit"
+time="2026-06-09T09:23:13.299372191Z" level=info msg="Completed buildkit initialization"
+time="2026-06-09T09:23:13.311650908Z" level=info msg="Daemon has completed initialization"
+time="2026-06-09T09:23:13.311862427Z" level=info msg="API listen on /var/run/docker.sock"
+[20260609 09:23:19.158 WARN  66:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
+java.nio.channels.UnresolvedAddressException: null
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:152)
+	at java.base/sun.nio.ch.SocketChannelImpl.checkRemote(SocketChannelImpl.java:918)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:936)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.SocketImpl.connect$ktor_network(SocketImpl.kt:44)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.ConnectUtilsJvmKt.tcpConnect(ConnectUtilsJvm.kt:21)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.TcpSocketBuilder.connect(TcpSocketBuilder.kt:48)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.ConnectionFactory.connect(ConnectionFactory.kt:30)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invokeSuspend(Endpoint.kt:215)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndspatched(Undispatched.kt:67)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturnIgnoreTimeout(Undispatched.kt:50)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.setupTimeout(Timeout.kt:149)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.withTimeoutOrNull(Timeout.kt:105)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.connect(Endpoint.kt:223)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.makeDedicatedRequest(Endpoint.kt:102)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.execute(Endpoint.kt:67)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.CIOEngine.execute(CIOEngine.kt:89)
+	at fleet.util.network@261.643/fleet.net.ProxyDelegatingClientEngine.execute(HttpProxyExtensions.kt:149)
+	at io.ktor.client.core@3.4.1/io.ktor.client.engine.HttpClientEngine$executeWithinCallContext$2.invokeSuspend(HttpClientEngine.kt:183)
+	at fleet.kotlin.runtime/kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at fleet.kotlin.runtime/kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at fleet.kotlin.runtime/kotlinx.coroutines.internal.SoftLimitedDispatcher$Worker.run(SoftLimitedDispatcher.kt:130)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:610)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:1188)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
+[20260609 09:23:20.760 WARN  66:WS:2jpa8oigl4u64ivhmsl4 fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=41279, secret=VL-jBX1j3VBrglk8LOS8p9yELBz3fN1qwvtI_uty5zQuM5tyR6Gdz4n1tAftQY7_25H3PbLU-35gEYeJ8huC-t0vyYQLDMxHpNuXz0qH8vYUL_e5y2qlLMXhyHpPCXfzXpXZ2qV4HbPjfTQxx1JmNqJDO4Mxe1QhsV9myzSeAAU0KWtvLnTKWi5uRP1LymjhQKCsgwZt0M3nkC46B6V6R1ZN7erKlsGWYIz14OX-wBd-GUz6ZFNx2wphOjgufMJXA6YUm-tjznc-B852zErL1Ag6AcijcxdemIUM3BK_HFknWuKKvwLYveFr8S_XIpsNn3hZG25GgDcKXnCK62xBcA==)
+[20260609 09:23:21.216 WARN  66:??:??                   f.d.impl.region.RegionUrlMapperImpl] Failed to fetch url mappings from https://www.jetbrains.com/config/JetBrainsResourceMapping.json, will retry
+java.nio.channels.UnresolvedAddressException: null
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:144)
+	at java.base/sun.nio.ch.Net.checkAddress(Net.java:152)
+	at java.base/sun.nio.ch.SocketChannelImpl.checkRemote(SocketChannelImpl.java:918)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:936)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.SocketImpl.connect$ktor_network(SocketImpl.kt:44)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.ConnectUtilsJvmKt.tcpConnect(ConnectUtilsJvm.kt:21)
+	at io.ktor.network@3.4.1/io.ktor.network.sockets.TcpSocketBuilder.connect(TcpSocketBuilder.kt:48)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.ConnectionFactory.connect(ConnectionFactory.kt:30)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invokeSuspend(Endpoint.kt:215)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint$connect$2$connect$1.invoke(Endpoint.kt)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndspatched(Undispatched.kt:67)
+	at fleet.kotlin.runtime/kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturnIgnoreTimeout(Undispatched.kt:50)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.setupTimeout(Timeout.kt:149)
+	at fleet.kotlin.runtime/kotlinx.coroutines.TimeoutKt.withTimeoutOrNull(Timeout.kt:105)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.connect(Endpoint.kt:223)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.makeDedicatedRequest(Endpoint.kt:102)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.Endpoint.execute(Endpoint.kt:67)
+	at io.ktor.client.cio@3.4.1/io.ktor.client.engine.cio.CIOEngine.execute(CIOEngine.kt:89)
+	at fleet.util.network@261.643/fleet.net.ProxyDelegatingClientEngine.execute(HttpProxyExtensions.kt:149)
+	at io.ktor.client.core@3.4.1/io.ktor.client.engine.HttpClientEngine$executeWithinCallContext$2.invokeSuspend(HttpClientEngine.kt:183)
+	at fleet.kotlin.runtime/kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at fleet.kotlin.runtime/kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at fleet.kotlin.runtime/kotlinx.coroutines.internal.SoftLimitedDispatcher$Worker.run(SoftLimitedDispatcher.kt:130)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:610)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:1188)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:775)
+	at fleet.kotlin.runtime/kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:762)
+- UID: 2jpa8oigl4u64ivhmsl4
+- Running on Host ID: 7sulmps109mlcumg3e9a
+- Primary Host ID: 7sulmps109mlcumg3e9a
+- Lobby Address: https://lobby.fleet.api.jetbrains.com:443
+- Version: 261.643
+- Smart Mode: enabled
+- Published to JetBrains Relay: true
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=2jpa8oigl4u64ivhmsl4&session=ARQznrR-BucVKWoGBaddCRIg5pX8ClzADdlRhgNUBHk
+Join URL detected at 24683 ms; cleaning up container...
+
+| metric | value |
+| --- | ---: |
+| rpull | 565 ms |
+| first user text appears | 3455 ms |
+| Dock HTTP API | 14270 ms |
+| Workspace Server | 23249 ms |
+| Join URL | 24683 ms |
+| cleanup after run | 1341 ms |
+
+STEP_MARKER SLAVE_WORKSPACE_HOT
+=============== Slave Workspace Hot ====================
+image=178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+container=demo-jb-slave-workspace-hot-20260609T092232Z
+log=/root/orca-overlaybd-demo-20260609T092232Z/demo-jb-slave-workspace-hot-20260609T092232Z.log
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z demo-jb-slave-workspace-hot-20260609T092232Z
+[2m2026-06-09T09:23:25.167028Z[0m [32m INFO[0m [2mfleet::artefact[0m[2m:[0m dock metadata file exists, inferring JBR version from it
+[2m2026-06-09T09:23:25.170860Z[0m [34mDEBUG[0m [2mfleet::workspace[0m[2m:[0m Starting Fleet Workspace with command: cd "/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/dock" && "/home/workspace-agent/.cache/JetBrains/Air/artifacts/25.0.2-329.111/jbr/bin/java" "-Dfleet.fsdaemon=/home/workspace-agent/.cache/JetBrains/Air/artifacts/261.643/fsdaemon/fsdaemon.sig" "@argfile.txt" "--workspaceOnly" "--auth=accept-everyone" "--publish" "--enableSmartMode"
+sudo: unable to resolve host node2: Temporary failure in name resolution
+time="2026-06-09T09:23:25.606416580Z" level=info msg="Starting up"
+time="2026-06-09T09:23:25.689794589Z" level=info msg="containerd not running, starting managed containerd"
+time="2026-06-09T09:23:25.696337850Z" level=info msg="started new containerd process" address=/var/run/docker/containerd/containerd.sock module=libcontainerd pid=116
+time="2026-06-09T09:23:25.870616655Z" level=info msg="starting containerd" revision= version=2.2.1
+time="2026-06-09T09:23:25.902012812Z" level=warning msg="Configuration migrated from version 2, use `containerd config migrate` to avoid migration" t="4.94µs"
+time="2026-06-09T09:23:25.902066484Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+time="2026-06-09T09:23:25.902138497Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+time="2026-06-09T09:23:25.902156588Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+time="2026-06-09T09:23:25.908294381Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+time="2026-06-09T09:23:25.908353786Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+time="2026-06-09T09:23:25.908373779Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908464137Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908505818Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908929911Z" level=info msg="skip loading plugin" error="path /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.btrfs (ext4) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908956844Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908976264Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.908989014Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.909287458Z" level=info msg="skip loading plugin" error="EROFS unsupported, please `modprobe erofs`: skip plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.909311534Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.909451453Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.915355187Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.915795087Z" level=info msg="skip loading plugin" error="lstat /var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+time="2026-06-09T09:23:25.915939483Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+time="2026-06-09T09:23:25.917205460Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+time="2026-06-09T09:23:25.918238738Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+time="2026-06-09T09:23:25.918591542Z" level=info msg="metadata content store policy set" policy=shared
+time="2026-06-09T09:23:25.932671141Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+time="2026-06-09T09:23:25.933016498Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+time="2026-06-09T09:23:25.933219440Z" level=info msg="built-in NRI default validator is disabled"
+time="2026-06-09T09:23:25.933325779Z" level=info msg="runtime interface created"
+time="2026-06-09T09:23:25.933343032Z" level=info msg="created NRI interface"
+time="2026-06-09T09:23:25.933443481Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:23:25.933681827Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+time="2026-06-09T09:23:25.933706655Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+time="2026-06-09T09:23:25.933730849Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+time="2026-06-09T09:23:25.933838447Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+time="2026-06-09T09:23:25.934184382Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934223575Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934242558Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934274783Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934293735Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934309129Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934324141Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.934338610Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+time="2026-06-09T09:23:25.934356978Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+time="2026-06-09T09:23:25.937231039Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+time="2026-06-09T09:23:25.937511599Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.937759477Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.938046337Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.938081415Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.938894783Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.939250306Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.939373411Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.943779326Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.943893745Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.943999134Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+time="2026-06-09T09:23:25.944111963Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+time="2026-06-09T09:23:25.944166875Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+time="2026-06-09T09:23:25.944231595Z" level=info msg="Get image filesystem path \"/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs\" for snapshotter \"overlayfs\""
+time="2026-06-09T09:23:25.944278024Z" level=info msg="Start snapshots syncer"
+time="2026-06-09T09:23:25.944898849Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+time="2026-06-09T09:23:25.945597697Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"containerdRootDir\":\"/var/lib/docker/containerd/daemon\",\"containerdEndpoint\":\"/var/run/docker/containerd/containerd.sock\",\"rootDir\":\"/var/lib/docker/containerd/daemon/io.containerd.grpc.v1.cri\",\"stateDir\":\"/var/run/docker/containerd/daemon/io.containerd.grpc.v1.cri\"}"
+time="2026-06-09T09:23:25.947942042Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+time="2026-06-09T09:23:25.950926685Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+time="2026-06-09T09:23:25.951204282Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951269562Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951291735Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951317439Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+time="2026-06-09T09:23:25.951342676Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951365670Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951388235Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951415348Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.951436966Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+time="2026-06-09T09:23:25.963079982Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:23:25.963598936Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+time="2026-06-09T09:23:25.964526130Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:23:25.964594491Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+time="2026-06-09T09:23:25.964626666Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+time="2026-06-09T09:23:25.964650564Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+time="2026-06-09T09:23:25.972829894Z" level=info msg=serving... address=/var/run/docker/containerd/containerd-debug.sock
+time="2026-06-09T09:23:25.973803586Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock.ttrpc
+time="2026-06-09T09:23:25.973915098Z" level=info msg=serving... address=/var/run/docker/containerd/containerd.sock
+time="2026-06-09T09:23:25.973947892Z" level=info msg="containerd successfully booted in 0.104947s"
+time="2026-06-09T09:23:26.006078779Z" level=info msg="OTEL tracing is not configured, using no-op tracer provider"
+time="2026-06-09T09:23:26.007117932Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/var/run/cdi
+time="2026-06-09T09:23:26.007225350Z" level=info msg="CDI directory does not exist, skipping: failed to monitor for changes: no such file or directory" dir=/etc/cdi
+time="2026-06-09T09:23:26.361105873Z" level=info msg="Creating a containerd client" address=/var/run/docker/containerd/containerd.sock timeout=1m0s
+time="2026-06-09T09:23:26.399712099Z" level=info msg="Loading containers: start."
+time="2026-06-09T09:23:26.399823545Z" level=info msg="Starting daemon with containerd snapshotter integration enabled"
+time="2026-06-09T09:23:26.418905964Z" level=info msg="Restoring containers: start."
+time="2026-06-09T09:23:26.448067193Z" level=info msg="Deleting nftables IPv6 rules" error="exec: \"nft\": executable file not found in $PATH"
+time="2026-06-09T09:23:26.889781608Z" level=info msg="Loading containers: done."
+time="2026-06-09T09:23:27.069277401Z" level=info msg="Docker daemon" commit="29.1.3-0ubuntu3~24.04.2" containerd-snapshotter=true storage-driver=overlayfs version=29.1.3
+time="2026-06-09T09:23:27.070810110Z" level=info msg="Initializing buildkit"
+time="2026-06-09T09:23:27.205068664Z" level=info msg="Completed buildkit initialization"
+time="2026-06-09T09:23:27.254646840Z" level=info msg="Daemon has completed initialization"
+time="2026-06-09T09:23:27.254735223Z" level=info msg="API listen on /var/run/docker.sock"
+Configure file log with class fleet.dock.impl.FleetDockLogbackConfigurator (/home/workspace-agent/.cache/JetBrains/Air/log/air.log)
+Loaded default logback configuration
+Loaded logback configuration from file '/home/workspace-agent/.config/JetBrains/Air/log.conf.toml'
+Applying new dynamic config FleetLogConfiguration(refreshTimeout=30, default=WARN, perTarget={}, loggers=[Entry(loggerName=fleet.ai.workspace.acp, default=DEBUG, perTarget={}), Entry(loggerName=fleet.ai.workspace.agents, default=DEBUG, perTarget={}), Entry(loggerName=com.agentclientprotocol, default=TRACE, perTarget={}), Entry(loggerName=fleet, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=noria, default=null, perTarget={CONSOLE=WARN, FILE=INFO}), Entry(loggerName=fleet.ai.frontend.api.agent.micro, default=ALL, perTarget={})])
+Dock HTTP Api listening to 127.0.0.1:36031
+[20260609 09:23:32.013 WARN  50:WS:napint2vi8u6nt5ttlvf fleet.workspace.WorkspacePlugin] No valid predefined secret was given. New secret will be generated
+Workspace Server listening to WorkspaceHttpApiEndpoint(host=127.0.0.1, port=34973, secret=mdNGxGOrBo9s19XiU3SXPAFxDhRO9SFJi9ixj4xbIv6dircMLCU85l5OxMQSqVu2jGTlVeqnQVjqsZyujLRj6zXQyQaMUlcDYyOAI3BgTQ15IZeWtRRc0Hnt_vbFiNaoLFDcbF41cOzwAiPv9KKBqLv1gT824hMdcBSVaf6_QUwaEqdU79ysKVxP4K3yCd-jw92KMOgaDxx0XmYpkyo1-gpYcplqa2HYxyiHJSg14LL-Z2a_FuijZ2try0HQ8eEQt33I45AlsXxUxaQJ8DgdmI7nzAnqlnO60-ytj5bZcu994b0To3cv2IFJjvi2ALwLSxTeuQRNp_xmFvV6P1Q0BQ==)
+- UID: napint2vi8u6nt5ttlvf
+- Running on Host ID: 7sulmps109mlcumg3e9a
+- Primary Host ID: 7sulmps109mlcumg3e9a
+- Lobby Address: https://lobby.fleet.api.jetbrains.com:443
+- Version: 261.643
+- Smart Mode: enabled
+- Published to JetBrains Relay: true
+- Join this workspace using URL: https://fleet.jetbrains.com/?version=261.643&workspaceId=napint2vi8u6nt5ttlvf&session=5P_ctwgxv0t6mTLPIQoymmkzStoAs8UHx56g-_T8sSQ
+Join URL detected at 8820 ms; cleaning up container...
+
+| metric | value |
+| --- | ---: |
+| rpull | 184 ms |
+| first user text appears | 734 ms |
+| Dock HTTP API | 5002 ms |
+| Workspace Server | 7866 ms |
+| Join URL | 8820 ms |
+| cleanup after run | 1129 ms |
+
+STEP_MARKER SLAVE_CLONE_BUILD_COLDISH
+=============== Slave Clone And Build Coldish ====================
+image=178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+container=demo-jb-slave-petclinic-build-20260609T092232Z
+project_dir=/home/workspace-agent/spring-petclinic
+Executing local: assert OverlayBD rwMode=overlayfs
+rwMode now: overlayfs
+Executing local: allow cni0 forwarding for clone/build payload
+Executing local: cleanup stale mutable container/snapshot
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc 178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z demo-jb-slave-petclinic-build-20260609T092232Z sh -lc <clone+build+sleep payload>
++ sudo sh -c printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
+sudo: unable to resolve host node2: Temporary failure in name resolution
++ cd /home/workspace-agent
++ rm -rf spring-petclinic
++ date +%s%3N
++ clone_start=1780997016226
++ git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git spring-petclinic
+Cloning into 'spring-petclinic'...
++ date +%s%3N
++ clone_end=1780997018851
++ cd spring-petclinic
++ date +%s%3N
++ build_start=1780997018855
++ ./mvnw -q -DskipTests package
++ date +%s%3N
++ build_end=1780997078042
++ test -f /home/workspace-agent/spring-petclinic/target/spring-petclinic-4.0.0-SNAPSHOT.jar
++ du -sh /home/workspace-agent/.m2 /home/workspace-agent/spring-petclinic /home/workspace-agent/spring-petclinic/target/spring-petclinic-4.0.0-SNAPSHOT.jar
+204M	/home/workspace-agent/.m2
+71M	/home/workspace-agent/spring-petclinic
++ echo clone_ms=2625
++ echo first_build_ms=59187
++ setclone_ms=2625
+first_build_ms=59187
+ +x
+__ORCA_DEMO_BUILD_DONE__
+Executing local: find task pid and containerd overlay upperdir
+pid=8248
+mount_command=mount -t overlay overlay /tmp/orca-demo-probe -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/55/block/mountpoint
+upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs
+workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/work
+lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/55/block/mountpoint
+overlaybd_config=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/55/block/config.v1.json
+uid_map=         0     231072      65536;
+gid_map=         0     231072      65536;
+Executing local: stop task but keep container/snapshot for upperdir diff export
+time="2026-06-09T09:24:40Z" level=error msg="unable to delete demo-jb-slave-petclinic-build-20260609T092232Z" error="task must be stopped before deletion: running: failed precondition"
+ctr: task must be stopped before deletion: running: failed precondition
+
+| metric | value |
+| --- | ---: |
+| rpull | 187 ms |
+| first user text appears | 807 ms |
+| task ready after run | 606 ms |
+| clone+first build marker after run | 62938 ms |
+| stop task | 3500 ms |
+
+STEP_MARKER COMMIT_DERIVED_IMAGE
+=============== Commit Derived Image ====================
+mutable_env_file=/root/orca-overlaybd-demo-20260609T092232Z/mutable.env
+Executing local: source /root/orca-overlaybd-demo-20260609T092232Z/mutable.env
+base_ref=178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+derived_ref=178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs
+overlaybd_config=/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/55/block/config.v1.json
+Executing local: find /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs -maxdepth 4 -print
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/tmp
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/tmp/hsperfdata_workspace-agent
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/src
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/src/linux-gcp-6.8-headers-6.8.0-1060
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/src/linux-headers-6.8.0-1060-gcp
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/lib
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/lib/modules
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/usr/lib/modules/6.8.0-1060-gcp
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/buildkit
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/docker
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/rancher
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/rancher/rke2
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/rancher/k3s
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/containerd
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/k0s
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/var/lib/kubelet
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.sudo_as_admin_successful
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.config
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.config/jgit
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.m2
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.m2/wrapper
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/.m2/repository
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.editorconfig
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/pom.xml
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/README.md
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/gradlew
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/docker-compose.yml
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/k8s
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.gitpod.yml
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/src
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/gradle
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/mvnw
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/build.gradle
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.gitattributes
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.devcontainer
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.mvn
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.git
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/gradlew.bat
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/mvnw.cmd
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/LICENSE.txt
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.github
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/.gitignore
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/target
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/home/workspace-agent/spring-petclinic/settings.gradle
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/etc
+/var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/58/fs/etc/resolv.conf
+Executing local: export overlay upperdir as OCI diff tar /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-upperdir-diff.tar
+Executing local: /opt/overlaybd/bin/overlaybd-create /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-data /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-index 64
+2026/06/09 09:24:43.428823|INFO |th=000061F65E752D80|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:43.431278|INFO |th=000061F65E752D80|signal.cpp:265|sync_signal_init:signalfd initialized
+2026/06/09 09:24:43.431531|INFO |th=000061F65E752D80|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:43.432060|ERROR|th=000061F65E752D80|uuid.h:60|parse:invalid UUID format.
+2026/06/09 09:24:43.432102|INFO |th=000061F65E752D80|file.cpp:219|write_header_trailer:write header {virtual_size: 68719476736, uuid: A98F59E7-F769-4568-8A9F-DC80DCF226A4, parent_uuid: 00000000-0000-0000-0000-000000000000}
+2026/06/09 09:24:43.432107|WARN |th=000061F65E752D80|file.cpp:229|write_header_trailer:parent_uuid is null.
+2026/06/09 09:24:43.432147|INFO |th=000061F65E752D80|file.cpp:219|write_header_trailer:write header {virtual_size: 68719476736, uuid: A98F59E7-F769-4568-8A9F-DC80DCF226A4, parent_uuid: 00000000-0000-0000-0000-000000000000}
+2026/06/09 09:24:43.432150|WARN |th=000061F65E752D80|file.cpp:229|write_header_trailer:parent_uuid is null.
+2026/06/09 09:24:43.432164|INFO |th=000061F65E752D80|file.cpp:1552|create_file_rw:Layer Info: { UUID:A98F59E7-F769-4568-8A9F-DC80DCF226A4, Parent_UUID: 00000000-0000-0000-0000-000000000000, Sparse: 0 Virtual size: 68719476736, Version: 1.1 }
+2026/06/09 09:24:43.432171|INFO |th=000061F65E752D80|file.cpp:469|~LSMTReadOnlyFile:pread times: 0, size: 0M
+2026/06/09 09:24:43.454643|INFO |th=000061F65E752D80|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+2026/06/09 09:24:43.454977|INFO |th=000061F65E752D80|signal.cpp:301|sync_signal_fini:signalfd finished
+2026/06/09 09:24:43.454998|INFO |th=000061F65E752D80|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+overlaybd-create has created files SUCCESSFULLY
+Executing local: jq --arg data /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-data --arg index /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-index --arg result /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-apply-result.log '.upper={data: $data, index: $index} | .resultFile=$result' /var/lib/containerd/io.containerd.snapshotter.v1.overlaybd/snapshots/55/block/config.v1.json >/root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-apply-config.v1.json
+Executing local: /opt/overlaybd/bin/overlaybd-apply /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-upperdir-diff.tar /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-apply-config.v1.json
+bash: line 182:  9998 Segmentation fault      (core dumped) /opt/overlaybd/bin/overlaybd-apply "$DIFF_TAR" "$APPLY_CONFIG" > "$COMMIT_DIR/overlaybd-apply.out" 2>&1
+2026/06/09 09:24:43.531820|INFO |th=00005FDAC640EE70|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:43.531921|INFO |th=00005FDAC640EE70|signal.cpp:265|sync_signal_init:signalfd initialized
+2026/06/09 09:24:43.532044|INFO |th=00005FDAC640EE70|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:43.533494|INFO |th=00005FDAC640EE70|image_service.cpp:213|read_global_config_and_set:using config /etc/overlaybd/overlaybd.json
+2026/06/09 09:24:43.533672|INFO |th=00005FDAC640EE70|image_service.cpp:227|read_global_config_and_set:set audit_path:/var/log/overlaybd-audit.log
+2026/06/09 09:24:43.533710|INFO |th=00005FDAC640EE70|image_service.cpp:239|read_global_config_and_set:[global_conf.logConfig().logPath()=/var/log/overlaybd.log]
+2026/06/09 09:24:43.533734|INFO |th=00005FDAC640EE70|image_service.cpp:253|read_global_config_and_set:set log_level: 1
+2026/06/09 09:24:43.533736|INFO |th=00005FDAC640EE70|image_service.cpp:256|read_global_config_and_set:set log_path: /var/log/overlaybd.log, log_size: 10485760, log_num: 3
+
+overlaybd-apply exited 139 after writing success; continuing
+Executing local: /opt/overlaybd/bin/overlaybd-commit -z -f /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-data /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-writable-index /root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-commit.obd
+2026/06/09 09:24:50.190031|INFO |th=00005D443EC2A710|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:50.190230|INFO |th=00005D443EC2A710|signal.cpp:265|sync_signal_init:signalfd initialized
+2026/06/09 09:24:50.190381|INFO |th=00005D443EC2A710|epoll.cpp:289|new_epoll_engine:Init event engine: epoll
+2026/06/09 09:24:50.196503|INFO |th=00005D443EC2A710|file.cpp:1504|open_file_rw:create LSMTFile object (append-only)
+2026/06/09 09:24:50.196535|INFO |th=00005D443EC2A710|file.cpp:1518|open_file_rw:Layer Info: { UUID:A98F59E7-F769-4568-8A9F-DC80DCF226A4 , Parent_UUID: 00000000-0000-0000-0000-000000000000, SparseRW: 0, Virtual size: 68719476736, Version: 1.1 }
+2026/06/09 09:24:50.196634|INFO |th=00005D443EC2A710|zfile.cpp:581|ZFileBuilder:create stream compressing object. [ block size: 4096, type: 1, enable_checksum: 1]
+2026/06/09 09:24:50.196639|INFO |th=00005D443EC2A710|compressor.cpp:352|create_compressor:ZFileObject using LZ4 algorithm
+2026/06/09 09:24:50.196710|INFO |th=00005D443EC2A710|zfile.cpp:592|init:write header.
+2026/06/09 09:24:50.197906|INFO |th=00005D443EC2A710|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: C7A212FC
+2026/06/09 09:24:50.197986|INFO |th=00005D443EC2A710|index.cpp:575|dump:index dump, size: 2317 ( mapping.size: 2317 )
+2026/06/09 09:24:50.198115|INFO |th=00005D443EC2A710|file.cpp:250|CompactOptions:generate compact options, file count: 1
+2026/06/09 09:24:50.198210|INFO |th=00005D443EC2A710|file.cpp:365|load_layer_info:get parent UUID: 00000000-0000-0000-0000-000000000000
+2026/06/09 09:24:50.198219|INFO |th=00005D443EC2A710|file.cpp:219|write_header_trailer:write header {virtual_size: 68719476736, uuid: 00000000-0000-0000-0000-000000000000, parent_uuid: 00000000-0000-0000-0000-000000000000}
+2026/06/09 09:24:50.198222|WARN |th=00005D443EC2A710|file.cpp:229|write_header_trailer:parent_uuid is null.
+
+2026/06/09 09:24:50.858437|INFO |th=00005D443EC2A710|index.cpp:920|compress_raw_index:index size compressed from 9262 to 147
+2026/06/09 09:24:50.858496|INFO |th=00005D443EC2A710|file.cpp:222|write_header_trailer:write trailer {index_offset: 303469568, index_size: 256, virtual_size: 68719476736, uuid: 00000000-0000-0000-0000-000000000000, parent_uuid: 00000000-0000-0000-0000-000000000000, sealed: 1}
+2026/06/09 09:24:50.858502|WARN |th=00005D443EC2A710|file.cpp:229|write_header_trailer:parent_uuid is null.
+2026/06/09 09:24:50.858562|INFO |th=00005D443EC2A710|zfile.cpp:622|fini:compress reserved data.
+2026/06/09 09:24:50.858578|INFO |th=00005D443EC2A710|zfile.cpp:629|fini:write index (offset: 249812734, count: 74092 size: 296368)
+2026/06/09 09:24:50.858873|INFO |th=00005D443EC2A710|zfile.cpp:639|fini:write trailer.
+2026/06/09 09:24:50.858882|INFO |th=00005D443EC2A710|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: 37029859
+2026/06/09 09:24:50.858888|INFO |th=00005D443EC2A710|zfile.cpp:644|fini:overwrite file header.
+2026/06/09 09:24:50.858890|INFO |th=00005D443EC2A710|zfile.cpp:1108|write_header_trailer:save header/trailer with digest: C7C24D7D
+2026/06/09 09:24:50.859172|INFO |th=00005D443EC2A710|file.cpp:469|~LSMTReadOnlyFile:pread times: 0, size: 0M
+2026/06/09 09:24:50.881630|INFO |th=00005D443EC2A710|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+2026/06/09 09:24:50.881808|INFO |th=00005D443EC2A710|signal.cpp:301|sync_signal_fini:signalfd finished
+2026/06/09 09:24:50.881820|INFO |th=00005D443EC2A710|epoll.cpp:75|~EventEngineEPoll:Finish event engine: epoll
+overlaybd-commit has committed files SUCCESSFULLY
+exported_diff_tar=/root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-upperdir-diff.tar
+committed_layer=/root/orca-overlaybd-demo-20260609T092232Z/commit/demo-touch-commit.obd
+committed_layer_digest=sha256:a73e2e78d877876e892e6ce2f107342bc585c95bc31f16534f18045a1dc6b9d8
+committed_layer_bytes=250109614
+diff_id=sha256:a73e2e78d877876e892e6ce2f107342bc585c95bc31f16534f18045a1dc6b9d8
+Executing local: curl base manifest/config from http://178.128.247.74:5000
+Executing local: curl -X PUT upload blob sha256:a73e2e78d877876e892e6ce2f107342bc585c95bc31f16534f18045a1dc6b9d8
+Executing local: jq append new diff_id/history to image config
+Executing local: curl -X PUT upload blob sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2
+Executing local: jq append OverlayBD layer to manifest
+Executing local: curl -X PUT http://178.128.247.74:5000/v2/orca/overlaybd-jb-real/manifests/petclinic-build-20260609T092232Z
+Executing local: cleanup mutable container/snapshot
+ctr: failed to remove "demo-jb-slave-petclinic-build-20260609T092232Z": snapshot demo-jb-slave-petclinic-build-20260609T092232Z does not exist: not found
+
+| metric | value |
+| --- | ---: |
+| export upperdir diff tar | 1099 ms |
+| overlaybd-create writable pair | 110 ms |
+| overlaybd-apply diff tar | 6650 ms |
+| overlaybd-commit | 741 ms |
+| upload committed layer | 3188 ms |
+| upload derived config | 165 ms |
+| push derived manifest | 74 ms |
+| committed layer bytes | 250109614 |
+| derived config bytes | 25974 |
+| derived manifest bytes | 15403 |
+| approximate transferred bytes | 250150991 |
+
+derived_image=178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+rwMode after commit: overlayfs
+
+STEP_MARKER SLAVE_BUILD_DERIVED_COLDISH
+=============== Slave Build Derived Coldish ====================
+image=178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+container=demo-jb-slave-petclinic-coldish-20260609T092232Z
+project_dir=/home/workspace-agent/spring-petclinic
+Executing local: allow cni0 forwarding for Maven payload
+ACCEPT  all opt -- in cni0 out *  0.0.0.0/0  -> 0.0.0.0/0
+ACCEPT  all opt -- in * out cni0  0.0.0.0/0  -> 0.0.0.0/0   ctstate RELATED,ESTABLISHED
+Executing local: cleanup stale repeat container/snapshot
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:      resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2:   downloading    |[32m[0m--------------------------------------|    0.0 B/25.4 KiB
+elapsed: 0.1 s                                                                    total:  15.0 K (143.3 KiB/s)
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z demo-jb-slave-petclinic-coldish-20260609T092232Z sh -lc <repeat build payload>
+before_sizes
+204M	/home/workspace-agent/.m2
+71M	/home/workspace-agent/spring-petclinic
+after_sizes
+204M	/home/workspace-agent/.m2
+72M	/home/workspace-agent/spring-petclinic
+repeat_build_ms=42901
+__ORCA_DEMO_REPEAT_BUILD_DONE__
+
+| metric | value |
+| --- | ---: |
+| rpull | 307 ms |
+| first user text appears | 1640 ms |
+| repeat build marker after run | 55139 ms |
+| repeat build command wall | 56112 ms |
+| exit code | 0 |
+
+STEP_MARKER MASTER_BUILD_DERIVED_COLDISH
+=============== Master Build Derived Coldish ====================
+image=127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+container=demo-jb-master-petclinic-coldish-20260609T092232Z
+project_dir=/home/workspace-agent/spring-petclinic
+Executing local: allow cni0 forwarding for Maven payload
+ACCEPT  all opt -- in cni0 out *  0.0.0.0/0  -> 0.0.0.0/0
+ACCEPT  all opt -- in * out cni0  0.0.0.0/0  -> 0.0.0.0/0   ctstate RELATED,ESTABLISHED
+Executing local: cleanup stale repeat container/snapshot
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:           resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.1 s                                                                    total:  15.0 K (147.4 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:           resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.2 s                                                                    total:  40.4 K (200.5 KiB/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:           resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.3 s                                                                    total:  40.4 K (133.8 KiB/s)
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z demo-jb-master-petclinic-coldish-20260609T092232Z sh -lc <repeat build payload>
+before_sizes
+204M	/home/workspace-agent/.m2
+71M	/home/workspace-agent/spring-petclinic
+after_sizes
+204M	/home/workspace-agent/.m2
+72M	/home/workspace-agent/spring-petclinic
+repeat_build_ms=36552
+__ORCA_DEMO_REPEAT_BUILD_DONE__
+
+| metric | value |
+| --- | ---: |
+| rpull | 544 ms |
+| first user text appears | 2105 ms |
+| repeat build marker after run | 40457 ms |
+| repeat build command wall | 41168 ms |
+| exit code | 0 |
+
+STEP_MARKER MASTER_BUILD_DERIVED_WARM
+=============== Master Build Derived Warm ====================
+image=127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+container=demo-jb-master-petclinic-warm-20260609T092232Z
+project_dir=/home/workspace-agent/spring-petclinic
+Executing local: allow cni0 forwarding for Maven payload
+ACCEPT  all opt -- in cni0 out *  0.0.0.0/0  -> 0.0.0.0/0
+ACCEPT  all opt -- in * out cni0  0.0.0.0/0  -> 0.0.0.0/0   ctstate RELATED,ESTABLISHED
+Executing local: cleanup stale repeat container/snapshot
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby rpull --plain-http 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:           resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: exists         |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2:   exists         |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.1 s                                                                    total:   0.0 B (0.0 B/s)
+127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z:           resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m|
+manifest-sha256:6fa37a64335fc1fb72b30c2121603eaa1dba041ee3e3d2fb69575996391a2334: exists         |[32m++++++++++++++++++++++++++++++++++++++[0m|
+config-sha256:a2fa75dfc07e64030f26c18a4c2f6c936fb09a58616a38d7130de1363bedabb2:   exists         |[32m++++++++++++++++++++++++++++++++++++++[0m|
+elapsed: 0.2 s                                                                    total:   0.0 B (0.0 B/s)
+done
+Executing local: rewrite OverlayBD repoBlobUrl https registry URLs to http
+Executing local: /opt/overlaybd/snapshotter/ctr -n moby run --snapshotter overlaybd --runtime io.containerd.runc.v2 --cni --allow-new-privs --runc-binary /usr/bin/sysbox-runc --rm 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z demo-jb-master-petclinic-warm-20260609T092232Z sh -lc <repeat build payload>
+before_sizes
+204M	/home/workspace-agent/.m2
+71M	/home/workspace-agent/spring-petclinic
+after_sizes
+204M	/home/workspace-agent/.m2
+72M	/home/workspace-agent/spring-petclinic
+repeat_build_ms=35480
+__ORCA_DEMO_REPEAT_BUILD_DONE__
+
+| metric | value |
+| --- | ---: |
+| rpull | 372 ms |
+| first user text appears | 1786 ms |
+| repeat build marker after run | 39192 ms |
+| repeat build command wall | 39449 ms |
+| exit code | 0 |
+
+STEP_MARKER DEMO_SUMMARY
+=============== Demo Summary ====================
+Demo configuration:
+  master:             root@178.128.247.74
+  slave:              anton.kapeliushok@34.76.115.252
+  registry:           178.128.247.74:5000
+  master registry ref:127.0.0.1:5000
+  base master image:  127.0.0.1:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+  base slave image:   178.128.247.74:5000/orca/overlaybd-jb-real:obd-jb-real-sysbox-20260608T171059Z
+  derived master ref: 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+  derived slave ref:  178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+  project dir:        /home/workspace-agent/spring-petclinic
+  jar path:           /home/workspace-agent/spring-petclinic/target/spring-petclinic-4.0.0-SNAPSHOT.jar
+  run id:             20260609T092232Z
+
+
+[1m[7m[2026-06-09T09:22:32Z] Step 1/9: clean up demo environments on master and slave[0m
+Scenario:
+[1m> 1. cleanup <[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run cleanup.sh on master (root@178.128.247.74)
+
+Will run cleanup.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing cleanup.sh on master (root@178.128.247.74)
+Logs follow from the remote command output.
+
+
+Executing cleanup.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 3765 ms[0m
+
+[1m[7m[2026-06-09T09:22:36Z] Step 2/9: run JB workspace on master until Join URL[0m
+Scenario:
+[2m- 1. cleanup[0m
+[1m> 2. master workspace cold <[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run run-workspace-until-join.sh on master (root@178.128.247.74)
+--yes set, continuing
+
+Executing run-workspace-until-join.sh on master (root@178.128.247.74)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 20089 ms[0m
+
+[1m[7m[2026-06-09T09:22:56Z] Step 3/9: run JB workspace on slave until Join URL[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[1m> 3. slave workspace cold <[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run run-workspace-until-join.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing run-workspace-until-join.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 27064 ms[0m
+
+[1m[7m[2026-06-09T09:23:23Z] Step 4/9: warm-run JB workspace on slave until Join URL[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[1m> 4. slave workspace hot <[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run run-workspace-until-join.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing run-workspace-until-join.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 10625 ms[0m
+
+[1m[7m[2026-06-09T09:23:34Z] Step 5/9: clone and build Spring Petclinic on slave with warm workspace layers[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[1m> 5. slave clone+build coldish <[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run petclinic-build-mutable.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing petclinic-build-mutable.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 67351 ms[0m
+
+[1m[7m[2026-06-09T09:24:41Z] Step 6/9: export slave overlay upperdir and push derived image[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[1m> 6. commit derived image <[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run commit-snapshot.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing commit-snapshot.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 14319 ms[0m
+
+[1m[7m[2026-06-09T09:24:56Z] Step 7/9: run Maven package on slave from first-use derived image[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[1m> 7. slave build coldish <[0m
+[2m- 8. master build coldish[0m
+[2m- 9. master build warm[0m
+
+Will run petclinic-build-repeat.sh on slave (anton.kapeliushok@34.76.115.252)
+--yes set, continuing
+
+Executing petclinic-build-repeat.sh on slave (anton.kapeliushok@34.76.115.252)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 57389 ms[0m
+
+[1m[7m[2026-06-09T09:25:53Z] Step 8/9: run Maven package on master from first-use derived image[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[1m> 8. master build coldish <[0m
+[2m- 9. master build warm[0m
+
+Will run petclinic-build-repeat.sh on master (root@178.128.247.74)
+--yes set, continuing
+
+Executing petclinic-build-repeat.sh on master (root@178.128.247.74)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 43507 ms[0m
+
+[1m[7m[2026-06-09T09:26:36Z] Step 9/9: warm-run Maven package on master from derived image[0m
+Scenario:
+[2m- 1. cleanup[0m
+[2m- 2. master workspace cold[0m
+[2m- 3. slave workspace cold[0m
+[2m- 4. slave workspace hot[0m
+[2m- 5. slave clone+build coldish[0m
+[2m- 6. commit derived image[0m
+[2m- 7. slave build coldish[0m
+[2m- 8. master build coldish[0m
+[1m> 9. master build warm <[0m
+
+Will run petclinic-build-repeat.sh on master (root@178.128.247.74)
+--yes set, continuing
+
+Executing petclinic-build-repeat.sh on master (root@178.128.247.74)
+Logs follow from the remote command output.
+
+
+[2mlocal step wall time, including SSH and remote cleanup: 40437 ms[0m
+
+Demo complete
+Derived image:
+  master/local: 127.0.0.1:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
+  slave/global: 178.128.247.74:5000/orca/overlaybd-jb-real:petclinic-build-20260609T092232Z
